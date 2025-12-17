@@ -70,10 +70,19 @@ class AMPVAEOnPolicyRunner:
 
         # AMP
         config_summary_amp = self.env.cfg.config_summary.amp
+        num_preload_transitions = config_summary_amp.num_preload_transitions
+        # scale preload per rank in distributed runs to avoid blowing up host/GPU memory
+        if self.multi_gpu_cfg is not None:
+            world_size = max(1, int(self.multi_gpu_cfg.get("world_size", 1)))
+            num_preload_transitions = max(1, num_preload_transitions // world_size)
+            print(
+                f"[INFO] Distributed run detected (world_size={world_size}); "
+                f"preloading {num_preload_transitions} transitions per rank."
+            )
         amp_data = AMPLoader(
             device,
             time_between_frames=self.env.step_dt,
-            num_preload_transitions=config_summary_amp.num_preload_transitions,
+            num_preload_transitions=num_preload_transitions,
             motion_files=config_summary_amp.motion_files,
         )
         amp_normalizer = Normalizer(amp_data.observation_dim)
