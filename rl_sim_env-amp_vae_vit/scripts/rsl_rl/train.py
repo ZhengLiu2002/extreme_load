@@ -9,6 +9,7 @@
 
 import argparse
 import sys
+from pathlib import Path
 
 
 from isaaclab.app import AppLauncher
@@ -94,7 +95,14 @@ import os
 # =================================================================================
 # [Fix] 增强后的导入模块 - 自动处理路径差异
 # =================================================================================
-import sys
+_HERE = Path(__file__).resolve()
+_PROJECT_ROOT = _HERE.parents[2]
+_SOURCE_ROOT = _PROJECT_ROOT / "source"
+# Ensure local source tree is on sys.path so distributed runs can import modules
+for _p in (_SOURCE_ROOT, _SOURCE_ROOT / "rl_sim_env"):
+    _p_str = str(_p)
+    if _p.exists() and _p_str not in sys.path:
+        sys.path.insert(0, _p_str)
 
 # 1. 尝试导入配置类 (RslRlOnPolicyRunnerCfg) 和环境包装器 (AmpVaeVecEnvWrapper)
 try:

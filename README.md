@@ -1,7 +1,12 @@
-### 单卡
-
+### 安装
 ```bash
 python -m pip install -e rl_sim_env-amp_vae_vit/source/rl_sim_env
+```
+
+### 训练
+
+```bash
+conda activate isaaclab
 ```
 
 ### 单卡
@@ -19,7 +24,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
     --run_name v2d3_arm_load_test_dist \
     --distributed \
     --headless \
-    --num_envs 4096
+    --num_envs 10000
 ```
 
 说明：
