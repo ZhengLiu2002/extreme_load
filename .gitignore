@@ -1,0 +1,37 @@
+# --- Python 通用忽略 ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Isaac Lab / RSL_RL 训练日志与输出 ---
+# 忽略 logs 文件夹（里面通常是巨大的 tfevents 和 checkpoints）
+logs/
+*/logs/
+
+# 忽略 hydra 产生的 outputs 文件夹
+outputs/
+*/outputs/
+
+# --- Weights & Biases (WandB) ---
+wandb/
+*/wandb/
+
+# --- 模型文件 (如果你不想传模型权重) ---
+*.pt
+*.pth
+*.ckpt
+
+# --- 配置文件产生的缓存/中间件 ---
+*.pkl
+*.yaml
+# 注意：如果你有一些手写的 yaml 配置需要提交，请手动用 git add -f 添加
+# 但根据你的 log，params/agent.yaml 这种通常是训练生成的副本，建议忽略
+
+# --- Python 打包信息 ---
+*.egg-info/
+.eggs/
+
+# --- IDE 配置 (可选) ---
+.vscode/
+.idea/

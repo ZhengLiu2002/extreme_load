@@ -84,8 +84,44 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_pickle, dump_yaml
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
+# from isaaclab.utils.io import dump_pickle, dump_yaml
+import pickle
+import yaml
+import os
+# from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
+# from isaaclab_tasks.utils import get_checkpoint_path
+# =================================================================================
+# [Fix] 增强后的导入模块 - 自动处理路径差异
+# =================================================================================
+import sys
+
+# 1. 尝试导入配置类 (RslRlOnPolicyRunnerCfg) 和环境包装器 (AmpVaeVecEnvWrapper)
+try:
+    # 优先尝试直接从 rl_algorithms 导入
+    from rl_algorithms.rsl_rl_wrapper import RslRlOnPolicyRunnerCfg, AmpVaeVecEnvWrapper
+except ImportError:
+    try:
+        # 备选：从 rl_sim_env 包内部导入
+        from rl_sim_env.rl_algorithms.rsl_rl_wrapper import RslRlOnPolicyRunnerCfg, AmpVaeVecEnvWrapper
+    except ImportError as e:
+        # 如果都失败，打印详细路径并抛出致命错误
+        print(f"[ERROR] Python Path: {sys.path}")
+        raise ImportError(f"CRITICAL: 无法导入 RslRlOnPolicyRunnerCfg 或 AmpVaeVecEnvWrapper。请检查 rl_algorithms 路径。\n详细错误: {e}")
+
+# 2. 尝试导入自定义运行器 (AMPVAEOnPolicyRunner) - 注意大写
+try:
+    # 修改：将 AMPVAEOnPolicyRunner 导入并重命名为 AmpVaeOnPolicyRunner，这样下面的代码不用改
+    from rl_algorithms.rsl_rl.runners.amp_vae_on_policy_runner import AMPVAEOnPolicyRunner as AmpVaeOnPolicyRunner
+except ImportError:
+    try:
+        # 备选路径同理
+        from rl_sim_env.rl_algorithms.rsl_rl.runners.amp_vae_on_policy_runner import AMPVAEOnPolicyRunner as AmpVaeOnPolicyRunner
+    except ImportError as e:
+        raise ImportError(f"CRITICAL: 无法导入 AMPVAEOnPolicyRunner (请检查类名大小写)。\n详细错误: {e}")
+
+print(f"[INFO] Successfully imported: Runner={AmpVaeOnPolicyRunner.__name__}, Wrapper={AmpVaeVecEnvWrapper.__name__}")
+# =================================================================================
+
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import OnPolicyRunner
@@ -135,13 +171,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    
+    # === 新增：解包环境，移除 Gymnasium 的默认 Wrapper (如 OrderEnforcing) ===
+    # 这是为了通过 RslRlVecEnvWrapper 的严格类型检查
+    env = env.unwrapped
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
 
     # save resume path before creating a new log_dir
-    if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+    # 修改：安全访问 class_name
+    algo_class_name = getattr(agent_cfg.algorithm, "class_name", None)
+    if agent_cfg.resume or algo_class_name == "Distillation":
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     # wrap for video recording
@@ -157,23 +199,79 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+    # env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+    env = AmpVaeVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    # runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    # === 修复：适配新版 rsl_rl 并注入自定义配置 ===
+    agent_cfg_dict = agent_cfg.to_dict()
+    
+    # 1. 注入 obs_groups (映射逻辑分组)
+    if "obs_groups" not in agent_cfg_dict:
+        agent_cfg_dict["obs_groups"] = {
+            "policy": ["actor_obs"],    
+            "critic": ["critic_obs"],   
+            "amp": ["amp_obs"],         
+            "vae": ["vae_obs"],         
+        }
+
+    # 2. 注入 class_name (解决 KeyError)
+    # 即使使用自定义 Runner，底层父类可能仍会检查这些字段
+    if "policy" in agent_cfg_dict and "class_name" not in agent_cfg_dict["policy"]:
+        agent_cfg_dict["policy"]["class_name"] = "ActorCritic"
+    
+    if "algorithm" in agent_cfg_dict and "class_name" not in agent_cfg_dict["algorithm"]:
+        # 注意：这里名字必须对应自定义 Runner 内部能够识别或导入的类
+        # 通常自定义 Runner 会覆盖构建逻辑，但为了防止父类检查，我们填一个占位符或真实名
+        agent_cfg_dict["algorithm"]["class_name"] = "AmpVaePPO" 
+
+    # 3. 使用自定义的 AmpVaeOnPolicyRunner
+    # 注意：这里不再使用标准的 OnPolicyRunner
+    runner = AmpVaeOnPolicyRunner(env, agent_cfg_dict, log_dir=log_dir, device=agent_cfg.device)
+
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
-    if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+    # 修改：安全访问 class_name
+    algo_class_name = getattr(agent_cfg.algorithm, "class_name", None)
+    if agent_cfg.resume or algo_class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
 
     # dump the configuration into log-directory
-    dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
-    dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    dump_pickle(os.path.join(log_dir, "params", "env.pkl"), env_cfg)
-    dump_pickle(os.path.join(log_dir, "params", "agent.pkl"), agent_cfg)
+    # dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
+    # dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+    # dump_pickle(os.path.join(log_dir, "params", "env.pkl"), env_cfg)
+    # dump_pickle(os.path.join(log_dir, "params", "agent.pkl"), agent_cfg)
+    # dump the configuration into log-directory
+    
+    # 1. 确保 params 目录存在
+    params_dir = os.path.join(log_dir, "params")
+    os.makedirs(params_dir, exist_ok=True)
+
+    # 2. 使用标准库保存 YAML (需要转换成字典，通常 config 对象有 to_dict() 方法，或者是 dataclass)
+    # 如果 env_cfg 没有 to_dict()，可以尝试跳过保存 yaml 或仅保存 pkl
+    try:
+        env_dict = env_cfg.to_dict() if hasattr(env_cfg, "to_dict") else env_cfg.__dict__
+        with open(os.path.join(params_dir, "env.yaml"), "w") as f:
+            yaml.dump(env_dict, f, default_flow_style=False)
+    except Exception as e:
+        print(f"[WARN] Could not save env.yaml: {e}")
+
+    try:
+        agent_dict = agent_cfg.to_dict() if hasattr(agent_cfg, "to_dict") else agent_cfg.__dict__
+        with open(os.path.join(params_dir, "agent.yaml"), "w") as f:
+            yaml.dump(agent_dict, f, default_flow_style=False)
+    except Exception as e:
+        print(f"[WARN] Could not save agent.yaml: {e}")
+
+    # 3. 使用标准库保存 Pickle (最重要，用于复现)
+    with open(os.path.join(params_dir, "env.pkl"), "wb") as f:
+        pickle.dump(env_cfg, f)
+    with open(os.path.join(params_dir, "agent.pkl"), "wb") as f:
+        pickle.dump(agent_cfg, f)
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)

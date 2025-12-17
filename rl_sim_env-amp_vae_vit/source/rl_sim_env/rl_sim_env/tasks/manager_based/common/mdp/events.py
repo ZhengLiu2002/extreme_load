@@ -111,7 +111,14 @@ def randomize_actuator_gains_plus(
             global_indices = actuator_indices = torch.tensor(asset_cfg.joint_ids, device=asset.device)
         else:
             # we take the intersection of the actuator joints and the asset config joints
-            actuator_joint_indices = torch.tensor(actuator.joint_indices, device=asset.device)
+            # actuator_joint_indices = torch.tensor(actuator.joint_indices, device=asset.device)
+            # 修复 UserWarning
+            if isinstance(actuator.joint_indices, torch.Tensor):
+                actuator_joint_indices = actuator.joint_indices.detach().clone().to(device=asset.device)
+            else:
+                actuator_joint_indices = torch.tensor(actuator.joint_indices, device=asset.device)
+
+
             asset_joint_ids = torch.tensor(asset_cfg.joint_ids, device=asset.device)
             # the indices of the joints in the actuator that have to be randomized
             actuator_indices = torch.nonzero(torch.isin(actuator_joint_indices, asset_joint_ids)).view(-1)

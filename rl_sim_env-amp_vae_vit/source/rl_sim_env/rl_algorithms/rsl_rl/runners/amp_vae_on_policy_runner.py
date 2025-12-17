@@ -51,7 +51,15 @@ class AMPVAEOnPolicyRunner:
             self.env.unwrapped.scene["robot"].data.default_joint_pos_limits[0][:, 1]
             - self.env.unwrapped.scene["robot"].data.default_joint_pos_limits[0][:, 0]
         )
-        min_std = torch.tensor(self.policy_cfg["min_normalized_std"], device=self.device) * (torch.abs(dof_range))
+        # ensure min_std matches the action dimension (some robots expose extra joints)
+        base_min_std = torch.tensor(self.policy_cfg["min_normalized_std"], device=self.device, dtype=torch.float32)
+        if base_min_std.numel() < num_actions:
+            pad = base_min_std.new_full((num_actions - base_min_std.numel(),), base_min_std[-1])
+            base_min_std = torch.cat([base_min_std, pad])
+        elif base_min_std.numel() > num_actions:
+            base_min_std = base_min_std[:num_actions]
+        dof_range = torch.as_tensor(dof_range, device=self.device, dtype=torch.float32)[:num_actions]
+        min_std = base_min_std * torch.abs(dof_range)
         actor_critic = ActorCritic(
             num_actor_obs=num_actor_obs + cenet_out_dim,
             num_critic_obs=num_critic_obs,
@@ -77,6 +85,9 @@ class AMPVAEOnPolicyRunner:
 
         # VAE
         vae: VAE = VAE(cenet_in_dim, cenet_out_dim).to(self.device)
+
+        # drop config-only fields that the algorithm constructor doesn't accept
+        self.alg_cfg.pop("class_name", None)
 
         # initialize algorithm
         self.alg = AMPVAEPPO(

@@ -123,6 +123,11 @@ class AMPLoader:
         print_placeholder_start("Loading motions")
         print(f"Loading {len(motion_files)} motions")
         print_placeholder_end()
+        if len(motion_files) == 0:
+            raise FileNotFoundError(
+                "No motion files found for AMP. Check the dataset path/glob passed to AMPLoader "
+                "and that RL_SIM_ENV_ROOT_DIR points to the project root containing the datasets directory."
+            )
         self.traj_length = len(motion_files)
 
         for i, motion_file in enumerate(motion_files):

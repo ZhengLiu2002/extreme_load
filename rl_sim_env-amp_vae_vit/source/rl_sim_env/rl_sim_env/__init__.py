@@ -8,6 +8,7 @@ Python module serving as a project/extension template.
 """
 
 import os
+from pathlib import Path
 
 # Register Gym environments.
 from .tasks import *
@@ -15,4 +16,9 @@ from .tasks import *
 # Register UI extensions.
 from .ui_extension_example import *
 
-RL_SIM_ENV_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+_env_root_override = os.environ.get("RL_SIM_ENV_ROOT_DIR")
+RL_SIM_ENV_ROOT_DIR = (
+    Path(_env_root_override).expanduser().resolve()
+    if _env_root_override
+    else Path(__file__).resolve().parents[4]
+)

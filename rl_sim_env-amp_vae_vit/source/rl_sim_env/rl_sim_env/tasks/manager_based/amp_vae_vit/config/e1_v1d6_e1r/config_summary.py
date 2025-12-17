@@ -4,8 +4,8 @@ import os
 from rl_sim_env import RL_SIM_ENV_ROOT_DIR
 from rl_sim_env.tasks.manager_based.common.mdp import UniformVelocityCommandTerrainCfg
 
-RL_SIM_ENV_ASSETS_DIR = os.path.join(RL_SIM_ENV_ROOT_DIR, "data/assets")
-RL_SIM_ENV_DATASETS_DIR = os.path.join(RL_SIM_ENV_ROOT_DIR, "data/datasets")
+RL_SIM_ENV_ASSETS_DIR = os.path.join(RL_SIM_ENV_ROOT_DIR, "assets")
+RL_SIM_ENV_DATASETS_DIR = os.path.join(RL_SIM_ENV_ROOT_DIR, "datasets")
 
 import glob
 

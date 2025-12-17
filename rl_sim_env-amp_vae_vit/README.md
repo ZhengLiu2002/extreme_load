@@ -34,7 +34,6 @@ Sign up to wandb: https://wandb.ai/ and get the API key.
 
 Run the following command to login to wandb:
 ```bash
-
 wandb login
 export WANDB_USERNAME=USER_NAME
 ```

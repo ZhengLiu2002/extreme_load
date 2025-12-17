@@ -21,10 +21,24 @@ from rl_algorithms.rsl_rl_wrapper import (
 
 ROBOT_BASE_LINK = "base_link"
 ROBOT_FOOT_NAMES = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
+ROBOT_LEG_JOINT_NAMES = [
+    "FL_hip_joint",
+    "FR_hip_joint",
+    "RL_hip_joint",
+    "RR_hip_joint",
+    "FL_thigh_joint",
+    "FR_thigh_joint",
+    "RL_thigh_joint",
+    "RR_thigh_joint",
+    "FL_calf_joint",
+    "FR_calf_joint",
+    "RL_calf_joint",
+    "RR_calf_joint",
+]
 
 ROBOT_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{RL_SIM_ENV_ASSETS_DIR}/robots/galileo_grq20_v1d6/grq20_v1d6.usd",
+        usd_path="/home/lz/Project/IsaacLab/Baxia_Load/assets/robots/galileo_grq20_v2d3/grq20_v2d3_with_arm.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -54,6 +68,9 @@ ROBOT_CFG = ArticulationCfg(
             "RR_hip_joint": 0.05,
             "RR_thigh_joint": 0.795,
             "RR_calf_joint": -1.61,
+            # === 新增：机械臂关节 ===
+            "arm_base_joint": 0.0,   # 旋转角度 0
+            "arm_length_joint": 0.6, # 初始杆长 60cm 
         },
         joint_vel={".*": 0.0},
     ),
@@ -70,6 +87,14 @@ ROBOT_CFG = ArticulationCfg(
             armature=0.01,
             min_delay=0,
             max_delay=6,
+        ),
+        "manipulator": IdealPDActuatorCfg(
+            joint_names_expr=["arm_base_joint", "arm_length_joint"],
+            effort_limit=5000.0, # 给大一点，防止阻尼力不够
+            velocity_limit=100.0,
+            stiffness=0.0,       # <--- 关键：设为0，没有回弹力
+            damping=1000.0,      # <--- 关键：极大阻尼，像是在胶水里，很难动
+            friction=10.0,       # 辅助一点摩擦
         ),
     },
 )
@@ -92,14 +117,14 @@ class ConfigSummary:
         discr_hidden_dims = [1024, 512]
 
     class env:
-        num_envs = 1500
-        num_actor_obs = 45
-        num_critic_obs = 48 + 196  # base_lin_vel*3 + base_ang_vel*3 +  projected_gravity*3 + commands*3 + dof_pos*12 + dof_vel*12 + actions*12
-        num_amp_obs = 39  # joint_pos*12 + foot_pos*12 + base_lin_vel*3 + base_ang_vel*3 + joint_vel*12 + pos_z *1
-        num_vae_obs = 45  # num_actor_obs
+        num_envs = 4096
+        num_actions = 14  # 12 leg joints + 2 arm joints
+        num_actor_obs = 51  # base_ang_vel*3 + projected_gravity*3 + joint_pos*14 + joint_vel*14 + actions*14 + commands*3
+        num_critic_obs = 241  # base_lin_vel*3 + base_ang_vel*3 + projected_gravity*3 + commands*3 + joint_pos*14 + joint_vel*14 + actions*14 + height_scan*187
+        num_amp_obs = 39  # joint_pos*12 + foot_pos*12 + base_lin_vel*2 + base_ang_vel_yaw*1 + joint_vel*12
+        num_vae_obs = 51  # matches actor_obs length
         obs_history_length = 5
         num_vae_out = 20  # code_vel*3 + mass*1 + latent*16
-        num_actions = 12
         action_history_length = 3
         clip_actions = 100.0
         clip_obs = 100.0
@@ -370,7 +395,8 @@ class AmpVaePPORunnerCfg(AmpVaeOnPolicyRunnerCfg):
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
-        min_normalized_std=[0.01, 0.01, 0.01] * 4,
+        # min_normalized_std=[0.01, 0.01, 0.01] * 4,
+        min_normalized_std=[0.01] * 14,
     )
     algorithm = AmpVaePpoAlgorithmCfg(
         value_loss_coef=0.5,

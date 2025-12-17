@@ -224,10 +224,11 @@ ROUGH_TERRAINS_CFG_ORIGINAL = terrain_gen.TerrainGeneratorCfg(
             proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
         ),
         "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
-            proportion=0.1, slope_range=(0.0, 0.5), platform_width=2.0, border_width=0.25
+            # raise max slope to ~34 degrees (0.6 rad) to meet ≥30° requirement
+            proportion=0.1, slope_range=(0.0, 0.6), platform_width=2.0, border_width=0.25
         ),
         "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
-            proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+            proportion=0.1, slope_range=(0.0, 0.6), platform_width=2.0, border_width=0.25
         ),
     },
 )
