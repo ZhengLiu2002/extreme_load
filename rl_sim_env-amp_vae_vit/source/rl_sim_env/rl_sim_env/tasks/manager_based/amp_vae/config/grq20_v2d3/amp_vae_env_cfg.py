@@ -28,6 +28,37 @@ from rl_sim_env.tasks.manager_based.common.sensor.ray_caster_config import (
 )
 from rl_sim_env.tasks.manager_based.common.terrain.config import AMP_VAE_TERRAIN_CFG
 
+# Helper: instantiate randomize_rigid_body_mass class lazily to avoid passing class directly to EventTerm.
+def randomize_payload_mass_once(
+    env,
+    env_ids,
+    asset_cfg,
+    mass_distribution_params,
+    operation,
+    distribution="uniform",
+    recompute_inertia=True,
+):
+    term = getattr(env, "_randomize_payload_mass_term", None)
+    if term is None:
+        cfg = EventTerm(
+            func=mdp.randomize_rigid_body_mass,
+            mode="reset",
+            params={
+                "asset_cfg": asset_cfg,
+                "mass_distribution_params": mass_distribution_params,
+                "operation": operation,
+                "distribution": distribution,
+                "recompute_inertia": recompute_inertia,
+            },
+        )
+        term = mdp.randomize_rigid_body_mass(cfg=cfg, env=env)
+        env._randomize_payload_mass_term = term
+    term(env, env_ids, asset_cfg=asset_cfg, mass_distribution_params=mass_distribution_params, operation=operation, distribution=distribution, recompute_inertia=recompute_inertia)
+
+# Backward-compat: hydra configs saved earlier may reference this name.
+def _randomize_payload_mass(env, env_ids, **kwargs):
+    return randomize_payload_mass_once(env, env_ids, **kwargs)
+
 @configclass
 class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
     def __post_init__(self):
@@ -104,8 +135,9 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
             heading_control_stiffness=self.config_summary.command.heading_control_stiffness,
         )
 
-        # reduce action scale
+        # reduce action scale & 仅控制腿部关节（机械臂从动作向量中移除，实现“锁死”）
         self.actions.joint_pos.scale = self.config_summary.action.scale
+        self.actions.joint_pos.joint_names = ROBOT_LEG_JOINT_NAMES
 
         # observations
         # scale
@@ -184,7 +216,9 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         self.events.reset_base.params["pose_range"] = self.config_summary.event.reset_base_pose
         self.events.reset_base.params["velocity_range"] = self.config_summary.event.reset_base_velocity
 
+        # 只随机腿部关节，机械臂由专门的随机化事件控制
         self.events.reset_robot_joints.params["position_range"] = self.config_summary.event.reset_robot_joints
+        self.events.reset_robot_joints.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=ROBOT_LEG_JOINT_NAMES)
 
         self.events.reset_actuator_gains.params["stiffness_distribution_params"] = (
             self.config_summary.event.randomize_actuator_kp_gains
@@ -227,10 +261,14 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         self.rewards.action_smoothness_l2.weight = self.config_summary.reward.action_smoothness_l2.weight
 
         self.rewards.joint_power.weight = self.config_summary.reward.joint_power.weight
-        self.rewards.joint_power.params["asset_cfg"].joint_names = ".*_joint"
+        self.rewards.joint_power.params["asset_cfg"] = leg_joint_cfg
 
         self.rewards.joint_power_distribution.weight = self.config_summary.reward.joint_power_distribution.weight
-        self.rewards.joint_power_distribution.params["asset_cfg"].joint_names = ".*_joint"
+        self.rewards.joint_power_distribution.params["asset_cfg"] = leg_joint_cfg
+        # limit torque/velocity/acc penalties to leg joints
+        self.rewards.dof_torques_l2.params = {"asset_cfg": leg_joint_cfg}
+        self.rewards.dof_vel_l2.params = {"asset_cfg": leg_joint_cfg}
+        self.rewards.dof_acc_l2.params = {"asset_cfg": leg_joint_cfg}
 
         self.rewards.feet_air_time.weight = self.config_summary.reward.feet_air_time.weight
         self.rewards.feet_air_time.params["threshold"] = self.config_summary.reward.feet_air_time.threshold
@@ -257,6 +295,47 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = ROBOT_BASE_LINK
+
+        # === 新增：训练时的机械臂随机化配置 ===
+        
+        # 1. 随机旋转角度 (-180度 到 180度)
+        # 解释：Reset时，机械臂会在圆周上随机选一个角度。
+        # 由于 stiffness=0，它初始化在哪里，就会停在哪里。
+        self.events.reset_arm_angle = EventTerm(
+            func=mdp.reset_joints_by_offset,
+            mode="reset",
+            params={
+                "position_range": (-3.14, 3.14),
+                "velocity_range": (0.0, 0.0),
+                "asset_cfg": SceneEntityCfg("robot", joint_names=["arm_base_joint"]),
+            },
+        )
+
+        # 2. 随机杆长 (0.6m 到 0.8m)
+        # 解释：Reset时，机械臂长度随机伸缩。
+        self.events.randomize_arm_length = EventTerm(
+            func=mdp.reset_joints_by_offset,
+            mode="reset",
+            params={
+                # 这里用“相对偏移”到默认值 0.6，所以偏移范围设置为 -0.2~0.2
+                "position_range": (-0.2, 0.2),
+                "velocity_range": (0.0, 0.0),
+                "asset_cfg": SceneEntityCfg("robot", joint_names=["arm_length_joint"]),
+            },
+        )
+
+        # 3. 随机负载质量 (5kg 到 10kg)
+        # 解释：Reset时，改变末端负载的物理属性。
+        self.events.randomize_payload_mass = EventTerm(
+            func=randomize_payload_mass_once,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=["arm_load_link"]),
+                "mass_distribution_params": (5.0, 10.0),
+                # use "abs" to set absolute mass uniformly in range
+                "operation": "abs",
+            },
+        )
 
 
 @configclass
@@ -329,11 +408,8 @@ class Grq20V2d3AmpVaeEnvCfg_PLAY(Grq20V2d3AmpVaeEnvCfg):
             func=mdp.reset_joints_by_offset,
             mode="reset",
             params={
-                # 注意：假设你的 URDF 里 joint limit lower=0.6, upper=0.8
-                # reset_joints_by_offset 是在 default_pos (通常是0) 基础上加偏移
-                # 如果你在 config_summary 里设了 init_state 0.6，这里 offset 设 (0.0, 0.2) 即可达到 0.6-0.8
-                # 或者直接用 reset_joints_by_range 指定绝对范围
-                "position_range": (0.6, 0.8), 
+                # 偏移到默认值 0.6 上，得到 0.6~0.8 的绝对长度
+                "position_range": (0.0, 0.2), 
                 "velocity_range": (0.0, 0.0),
                 "asset_cfg": SceneEntityCfg("robot", joint_names=["arm_length_joint"]),
             },
@@ -341,12 +417,12 @@ class Grq20V2d3AmpVaeEnvCfg_PLAY(Grq20V2d3AmpVaeEnvCfg):
 
         # 3. 随机负载质量 (5kg 到 10kg)
         self.events.randomize_payload_mass = EventTerm(
-            func=mdp.randomize_rigid_body_mass,
+            func=randomize_payload_mass_once,
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=["arm_load_link"]),
                 "mass_distribution_params": (5.0, 10.0),
-                "operation": "set",
+                "operation": "abs",
             },
         )
 

@@ -118,11 +118,14 @@ class ConfigSummary:
 
     class env:
         num_envs = 4096
-        num_actions = 14  # 12 leg joints + 2 arm joints
-        num_actor_obs = 51  # base_ang_vel*3 + projected_gravity*3 + joint_pos*14 + joint_vel*14 + actions*14 + commands*3
-        num_critic_obs = 241  # base_lin_vel*3 + base_ang_vel*3 + projected_gravity*3 + commands*3 + joint_pos*14 + joint_vel*14 + actions*14 + height_scan*187
+        # 仅让策略控制腿部 12 个关节，机械臂关节锁死（仍在仿真中，但不在动作向量里）
+        num_actions = 12
+        # base_ang_vel*3 + projected_gravity*3 + joint_pos*14 + joint_vel*14 + actions*12 + commands*3
+        num_actor_obs = 49
+        # base_lin_vel*3 + base_ang_vel*3 + projected_gravity*3 + commands*3 + joint_pos*14 + joint_vel*14 + actions*12 + height_scan*187
+        num_critic_obs = 239
         num_amp_obs = 39  # joint_pos*12 + foot_pos*12 + base_lin_vel*2 + base_ang_vel_yaw*1 + joint_vel*12
-        num_vae_obs = 51  # matches actor_obs length
+        num_vae_obs = 49  # matches actor_obs length
         obs_history_length = 5
         num_vae_out = 20  # code_vel*3 + mass*1 + latent*16
         action_history_length = 3

@@ -104,6 +104,9 @@ class AmpVaeVitRLEnv(ManagerBasedEnv, gym.Env):
         )
         self.obs_min_delay = self.cfg.config_summary.observation.delay.min_delay
         self.obs_max_delay = self.cfg.config_summary.observation.delay.max_delay
+        # number of robot joints (includes arm joints for observations)
+        joint_dim = self.scene["robot"].data.default_joint_pos.shape[1]
+
         self.obs_actor_base_ang_vel_delay_buffer = DataBuffer(
             self.num_envs, 3, self.obs_max_delay + 1, self.device
         )
@@ -111,10 +114,10 @@ class AmpVaeVitRLEnv(ManagerBasedEnv, gym.Env):
             self.num_envs, 3, self.obs_max_delay + 1, self.device
         )
         self.obs_actor_joint_pos_delay_buffer = DataBuffer(
-            self.num_envs, cfg.config_summary.env.num_actions, self.obs_max_delay + 1, self.device
+            self.num_envs, joint_dim, self.obs_max_delay + 1, self.device
         )
         self.obs_actor_joint_vel_delay_buffer = DataBuffer(
-            self.num_envs, cfg.config_summary.env.num_actions, self.obs_max_delay + 1, self.device
+            self.num_envs, joint_dim, self.obs_max_delay + 1, self.device
         )
         self.obs_actor_base_ang_vel_delay = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.obs_actor_projected_gravity_delay = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
