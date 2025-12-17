@@ -1,6 +1,12 @@
 ### 单卡
 
 ```bash
+python -m pip install -e rl_sim_env-amp_vae_vit/source/rl_sim_env
+```
+
+### 单卡
+
+```bash
 python rl_sim_env-amp_vae_vit/scripts/rsl_rl/train.py     --task Rl-Sim-Env-AmpVae-Grq20-V2d3-v0     --run_name v2d3_arm_load_test     --headless     --num_envs 4096
 ```
 ### 多卡

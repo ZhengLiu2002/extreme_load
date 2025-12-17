@@ -10,6 +10,7 @@
 import argparse
 import sys
 
+
 from isaaclab.app import AppLauncher
 
 # local imports
