@@ -86,14 +86,13 @@ class VAE(nn.Module):
         code_mass = self.reparameterise(mean_mass, logvar_mass, deterministic)
         code_com = self.reparameterise(mean_com, logvar_com, deterministic)
 
-        code_latent = torch.cat((code_com, code_latent), dim=-1)
-        code = torch.cat((code_vel, code_mass, code_latent), dim=-1)
+        code_for_decoder = torch.cat((code_vel, code_mass, code_com, code_latent), dim=-1)
 
         # decode
-        decoded = self.decoder(code)
+        decoded = self.decoder(code_for_decoder)
 
         return (
-            code,
+            code_for_decoder,
             code_vel,
             code_mass,
             code_com,

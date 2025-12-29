@@ -236,7 +236,7 @@ class AMPVAEOnPolicyRunner:
                     next_amp_obs_with_term = torch.clone(next_amp_obs)
                     next_amp_obs_with_term[reset_env_ids] = terminal_amp_states
 
-                    next_actor_obs = torch.clone(critic_obs.detach()[:, 3:48])
+                    next_actor_obs = torch.clone(actor_obs.detach())
 
                     # process the step
                     self.alg.process_env_step(

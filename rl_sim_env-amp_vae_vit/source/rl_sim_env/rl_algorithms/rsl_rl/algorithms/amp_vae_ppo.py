@@ -187,10 +187,12 @@ class AMPVAEPPO:
             _,
             _,
         ) = self.vae.cenet_forward(vae_obs)
+        mixed_com = self.p_boot_mean * vae_code_com + (1 - self.p_boot_mean) * critic_obs[:, -4:-1]
         obs_full_batch = torch.cat(
             (
                 self.p_boot_mean * vae_code_vel + (1 - self.p_boot_mean) * critic_obs[:, 0:3],
                 self.p_boot_mean * vae_code_mass + (1 - self.p_boot_mean) * critic_obs[:, -1:],
+                mixed_com,
                 vae_code_latent,
                 actor_obs,
             ),
