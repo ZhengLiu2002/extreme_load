@@ -41,7 +41,7 @@ class AMPVAEVITOnPolicyRunner:
         obs_history_length = config_summary_env.obs_history_length
         cenet_in_dim = num_vae_obs * obs_history_length
         cenet_out_dim = config_summary_env.num_vae_out
-        num_next_obs = 45
+        num_next_obs = num_actor_obs
         num_actions = self.env.num_actions
 
         # evaluate the policy class
@@ -76,7 +76,7 @@ class AMPVAEVITOnPolicyRunner:
         ).to(self.device)
 
         # VAE
-        vae: VAE = VAE(cenet_in_dim, cenet_out_dim).to(self.device)
+        vae: VAE = VAE(cenet_in_dim, cenet_out_dim, num_actor_obs).to(self.device)
 
         # initialize algorithm
         self.alg = AMPVAEVITPPO(

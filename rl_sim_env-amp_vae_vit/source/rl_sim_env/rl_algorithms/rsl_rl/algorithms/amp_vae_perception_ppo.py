@@ -169,7 +169,22 @@ class AMPVAEPerceptionPPO:
         )
 
     def act(self, actor_obs, critic_obs, amp_obs, vae_obs):
-        vae_code, vae_code_vel, vae_code_latent, _, _, _, _, _ = self.vae.cenet_forward(vae_obs)
+        (
+            vae_code,
+            vae_code_vel,
+            _,
+            _,
+            vae_code_latent,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = self.vae.cenet_forward(vae_obs)
         obs_full_batch = torch.cat(
             (
                 self.p_boot_mean * vae_code_vel + (1 - self.p_boot_mean) * critic_obs[:, 0:3],
@@ -435,12 +450,18 @@ class AMPVAEPerceptionPPO:
             (
                 vae_code,
                 vae_code_vel,
+                _,
+                _,
                 vae_code_latent,
                 vae_decoded,
                 vae_mean_vel,
                 vae_logvar_vel,
                 vae_mean_latent,
                 vae_logvar_latent,
+                _,
+                _,
+                _,
+                _,
             ) = self.vae.cenet_forward(vae_obs_batch)
             loss_recon_vel = nn.MSELoss()(vae_code_vel, vae_vel_target)
             loss_recon_decode = nn.MSELoss()(vae_decoded, vae_decode_target)

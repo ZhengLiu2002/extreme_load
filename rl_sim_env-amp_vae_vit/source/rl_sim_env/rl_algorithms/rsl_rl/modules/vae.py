@@ -10,10 +10,11 @@ from rl_algorithms.rsl_rl.utils.log_print import (
 
 
 class VAE(nn.Module):
-    def __init__(self, cenet_in_dim, cenet_out_dim):
+    def __init__(self, cenet_in_dim, cenet_out_dim, cenet_recon_dim=45):
         super().__init__()
 
         self.activation = nn.ELU()
+        latent_dim = cenet_out_dim - 7
 
         self.encoder = nn.Sequential(
             nn.Linear(cenet_in_dim, 128),
@@ -21,19 +22,21 @@ class VAE(nn.Module):
             nn.Linear(128, 64),
             self.activation,
         )
-        self.encode_mean_latent = nn.Linear(64, cenet_out_dim - 4)
-        self.encode_logvar_latent = nn.Linear(64, cenet_out_dim - 4)
+        self.encode_mean_latent = nn.Linear(64, latent_dim)
+        self.encode_logvar_latent = nn.Linear(64, latent_dim)
         self.encode_mean_vel = nn.Linear(64, 3)
         self.encode_logvar_vel = nn.Linear(64, 3)
         self.encode_mean_mass = nn.Linear(64, 1)
         self.encode_logvar_mass = nn.Linear(64, 1)
+        self.encode_mean_com = nn.Linear(64, 3)
+        self.encode_logvar_com = nn.Linear(64, 3)
 
         self.decoder = nn.Sequential(
             nn.Linear(cenet_out_dim, 64),
             self.activation,
             nn.Linear(64, 128),
             self.activation,
-            nn.Linear(128, 45),
+            nn.Linear(128, cenet_recon_dim),
         )
 
         print_placeholder_start("VAE")
@@ -44,6 +47,8 @@ class VAE(nn.Module):
         print(f"VAE: {self.encode_logvar_vel}")
         print(f"VAE: {self.encode_mean_mass}")
         print(f"VAE: {self.encode_logvar_mass}")
+        print(f"VAE: {self.encode_mean_com}")
+        print(f"VAE: {self.encode_logvar_com}")
         print_placeholder_end()
 
     def forward(self):
@@ -65,10 +70,13 @@ class VAE(nn.Module):
         logvar_vel = self.encode_logvar_vel(encoded)
         mean_mass = self.encode_mean_mass(encoded)
         logvar_mass = self.encode_logvar_mass(encoded)
+        mean_com = self.encode_mean_com(encoded)
+        logvar_com = self.encode_logvar_com(encoded)
 
         logvar_latent = torch.clamp(logvar_latent, min=-10, max=10)
         logvar_vel = torch.clamp(logvar_vel, min=-10, max=10)
         logvar_mass = torch.clamp(logvar_mass, min=-10, max=10)
+        logvar_com = torch.clamp(logvar_com, min=-10, max=10)
         # logvar_latent = self.soft_clip(logvar_latent, low=-10.0, high=10.0)
         # logvar_vel = self.soft_clip(logvar_vel, low=-10.0, high=10.0)
 
@@ -76,7 +84,9 @@ class VAE(nn.Module):
         code_latent = self.reparameterise(mean_latent, logvar_latent, deterministic)
         code_vel = self.reparameterise(mean_vel, logvar_vel, deterministic)
         code_mass = self.reparameterise(mean_mass, logvar_mass, deterministic)
+        code_com = self.reparameterise(mean_com, logvar_com, deterministic)
 
+        code_latent = torch.cat((code_com, code_latent), dim=-1)
         code = torch.cat((code_vel, code_mass, code_latent), dim=-1)
 
         # decode
@@ -86,6 +96,7 @@ class VAE(nn.Module):
             code,
             code_vel,
             code_mass,
+            code_com,
             code_latent,
             decoded,
             mean_vel,
@@ -94,6 +105,8 @@ class VAE(nn.Module):
             logvar_latent,
             mean_mass,
             logvar_mass,
+            mean_com,
+            logvar_com,
         )
 
     def reparameterise(self, mean, logvar, deterministic=False):
@@ -110,6 +123,7 @@ class VAE(nn.Module):
             code,
             code_vel,
             code_mass,
+            code_com,
             code_latent,
             decoded,
             mean_vel,
@@ -118,6 +132,8 @@ class VAE(nn.Module):
             logvar_latent,
             mean_mass,
             logvar_mass,
+            mean_com,
+            logvar_com,
         ) = self.cenet_forward(obs_history, deterministic=True)
         return code
 

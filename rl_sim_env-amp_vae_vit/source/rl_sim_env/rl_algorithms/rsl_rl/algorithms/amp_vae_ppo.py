@@ -171,7 +171,22 @@ class AMPVAEPPO:
         )
 
     def act(self, actor_obs, critic_obs, amp_obs, vae_obs):
-        vae_code, vae_code_vel, vae_code_mass, vae_code_latent, _, _, _, _, _, _, _ = self.vae.cenet_forward(vae_obs)
+        (
+            vae_code,
+            vae_code_vel,
+            vae_code_mass,
+            vae_code_com,
+            vae_code_latent,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = self.vae.cenet_forward(vae_obs)
         obs_full_batch = torch.cat(
             (
                 self.p_boot_mean * vae_code_vel + (1 - self.p_boot_mean) * critic_obs[:, 0:3],
@@ -291,6 +306,7 @@ class AMPVAEPPO:
         # -- For VAE
         mean_vae_vel_loss = 0
         mean_vae_mass_loss = 0
+        mean_vae_com_loss = 0
         mean_vae_decode_loss = 0
         mean_vae_kl_loss = 0
         mean_vae_loss = 0
@@ -434,13 +450,16 @@ class AMPVAEPPO:
             # -- beat VAE loss
             vae_vel_target = critic_obs_batch[:, 0:3]
             vae_mass_target = critic_obs_batch[:, -1:]
+            vae_com_target = critic_obs_batch[:, -4:-1]
             vae_decode_target = next_actor_obs_batch
             vae_vel_target.requires_grad = False
             vae_decode_target.requires_grad = False
+            vae_com_target.requires_grad = False
             (
                 vae_code,
                 vae_code_vel,
                 vae_code_mass,
+                vae_code_com,
                 vae_code_latent,
                 vae_decoded,
                 vae_mean_vel,
@@ -449,11 +468,14 @@ class AMPVAEPPO:
                 vae_logvar_latent,
                 vae_mean_mass,
                 vae_logvar_mass,
+                vae_mean_com,
+                vae_logvar_com,
             ) = self.vae.cenet_forward(vae_obs_batch)
             loss_recon_vel = nn.MSELoss()(vae_code_vel, vae_vel_target)
             loss_recon_mass = nn.MSELoss()(vae_code_mass, vae_mass_target)
+            loss_recon_com = nn.MSELoss()(vae_code_com, vae_com_target)
             loss_recon_decode = nn.MSELoss()(vae_decoded, vae_decode_target)
-            loss_recon = loss_recon_vel + loss_recon_mass + loss_recon_decode
+            loss_recon = loss_recon_vel + loss_recon_mass + loss_recon_decode + 2.0 * loss_recon_com
 
             # if self.is_multi_gpu:
             #     local_recon = torch.tensor(loss_recon_decode.item(), device=self.device)
@@ -520,6 +542,7 @@ class AMPVAEPPO:
             # Store the VAE losses
             mean_vae_vel_loss += loss_recon_vel.item()
             mean_vae_mass_loss += loss_recon_mass.item()
+            mean_vae_com_loss += loss_recon_com.item()
             mean_vae_decode_loss += loss_recon_decode.item()
             mean_vae_kl_loss += kl_loss.item()
             mean_vae_beta += self.vae_beta
@@ -539,6 +562,7 @@ class AMPVAEPPO:
         mean_vae_loss /= num_updates
         mean_vae_vel_loss /= num_updates
         mean_vae_mass_loss /= num_updates
+        mean_vae_com_loss /= num_updates
         mean_vae_decode_loss /= num_updates
         mean_vae_kl_loss /= num_updates
         mean_vae_beta /= num_updates
@@ -561,6 +585,7 @@ class AMPVAEPPO:
             "expert_pred": mean_expert_pred,
             "vae_vel_loss": mean_vae_vel_loss,
             "vae_mass_loss": mean_vae_mass_loss,
+            "vae_com_loss": mean_vae_com_loss,
             "vae_decode_loss": mean_vae_decode_loss,
             "vae_kl_loss": mean_vae_kl_loss,
             "vae_beta": mean_vae_beta,

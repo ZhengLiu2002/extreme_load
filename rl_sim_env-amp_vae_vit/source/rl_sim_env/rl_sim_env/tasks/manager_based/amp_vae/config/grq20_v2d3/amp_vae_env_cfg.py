@@ -433,13 +433,13 @@ class Grq20V2d3AmpVaeEnvCfg_PLAY(Grq20V2d3AmpVaeEnvCfg):
             },
         )
 
-        # 3. 随机负载质量 (4kg 到 7kg)
+        # 3. 随机负载质量 (4kg 到 6kg)
         self.events.randomize_payload_mass = EventTerm(
             func=randomize_payload_mass_once,
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=["arm_load_link"]),
-                "mass_distribution_params": (4.0, 7.0),
+                "mass_distribution_params": (4.0, 6.0),
                 "operation": "abs",
             },
         )

@@ -75,7 +75,7 @@ class AMPVAEPerceptionOnPolicyRunner:
         ).to(self.device)
 
         # VAE
-        vae: VAE = VAE(cenet_in_dim, cenet_out_dim).to(self.device)
+        vae: VAE = VAE(cenet_in_dim, cenet_out_dim, num_actor_obs).to(self.device)
 
         # initialize algorithm
         self.alg = AMPVAEPerceptionPPO(

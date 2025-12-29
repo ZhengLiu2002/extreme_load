@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, List
 
 import torch
 import warp as wp
-from isaaclab.assets import RigidObject
+from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer, RayCaster
 from isaaclab.utils.math import quat_apply_yaw, quat_rotate_inverse, yaw_quat
@@ -80,6 +80,13 @@ def random_material(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Te
     material_obs = material_obs.reshape(material_obs.shape[0], -1)
     # print("material_obs", material_obs)
     return material_obs.to(env.device)
+
+
+def joint_torques(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Joint torques for the articulation."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids if asset_cfg.joint_ids is not None else slice(None)
+    return asset.data.applied_torque[:, joint_ids].to(env.device)
 
 
 def generated_commands_scale(env: ManagerBasedRLEnv, command_name: str, scale: tuple[float, ...]) -> torch.Tensor:

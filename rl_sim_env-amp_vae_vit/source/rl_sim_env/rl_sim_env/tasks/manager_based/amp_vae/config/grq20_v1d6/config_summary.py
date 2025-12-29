@@ -93,10 +93,10 @@ class ConfigSummary:
 
     class env:
         num_envs = 1500
-        num_actor_obs = 45
+        num_actor_obs = 57
         num_critic_obs = 48 + 196  # base_lin_vel*3 + base_ang_vel*3 +  projected_gravity*3 + commands*3 + dof_pos*12 + dof_vel*12 + actions*12
         num_amp_obs = 39  # joint_pos*12 + foot_pos*12 + base_lin_vel*3 + base_ang_vel*3 + joint_vel*12 + pos_z *1
-        num_vae_obs = 45  # num_actor_obs
+        num_vae_obs = 57  # num_actor_obs
         obs_history_length = 5
         num_vae_out = 20  # code_vel*3 + mass*1 + latent*16
         num_actions = 12
