@@ -138,6 +138,7 @@ class AMPVAEVITPPO:
 
         # VAE parameters
         self.vae_beta = vae_beta
+        self.vae_com_scale = 10.0
 
         # Adaboot
         self.p_boot = torch.zeros(200, dtype=torch.float32, device=self.device, requires_grad=False)
@@ -187,10 +188,14 @@ class AMPVAEVITPPO:
             _,
             _,
         ) = self.vae.cenet_forward(vae_obs)
+        mixed_com = self.p_boot_mean * vae_code_com + (1 - self.p_boot_mean) * (
+            critic_obs[:, -4:-1] * self.vae_com_scale
+        )
         obs_full_batch = torch.cat(
             (
                 self.p_boot_mean * vae_code_vel + (1 - self.p_boot_mean) * critic_obs[:, 0:3],
                 self.p_boot_mean * vae_code_mass + (1 - self.p_boot_mean) * critic_obs[:, -1:],
+                mixed_com,
                 vae_code_latent,
                 actor_obs,
             ),
@@ -450,7 +455,7 @@ class AMPVAEVITPPO:
             # -- beat VAE loss
             vae_vel_target = critic_obs_batch[:, 0:3]
             vae_mass_target = critic_obs_batch[:, -1:]
-            vae_com_target = critic_obs_batch[:, -4:-1]
+            vae_com_target = critic_obs_batch[:, -4:-1] * self.vae_com_scale
             vae_decode_target = next_actor_obs_batch
             vae_vel_target.requires_grad = False
             vae_decode_target.requires_grad = False

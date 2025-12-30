@@ -310,9 +310,21 @@ class AmpVaeVitRLEnv(ManagerBasedEnv, gym.Env):
         obs_actor_projected_gravity = self.obs_actor_projected_gravity_delay_buffer.get_data_his(his_list=self.obs_actor_projected_gravity_delay)
         obs_actor_joint_pos = self.obs_actor_joint_pos_delay_buffer.get_data_his(his_list=self.obs_actor_joint_pos_delay)
         obs_actor_joint_vel = self.obs_actor_joint_vel_delay_buffer.get_data_his(his_list=self.obs_actor_joint_vel_delay)
+        obs_actor_joint_torques = obs_actor_current["joint_torques"]
         obs_actor_vel_command = obs_actor_current["velocity_commands"]
         obs_actor_action = obs_actor_current["actions"]
-        self.obs_dict["actor_obs"] = torch.cat([obs_actor_base_ang_vel, obs_actor_projected_gravity, obs_actor_joint_pos, obs_actor_joint_vel, obs_actor_action, obs_actor_vel_command], dim=-1)
+        self.obs_dict["actor_obs"] = torch.cat(
+            [
+                obs_actor_base_ang_vel,
+                obs_actor_projected_gravity,
+                obs_actor_joint_pos,
+                obs_actor_joint_vel,
+                obs_actor_joint_torques,
+                obs_actor_action,
+                obs_actor_vel_command,
+            ],
+            dim=-1,
+        )
         self.vae_obs_history.insert(self.obs_dict["actor_obs"])
         self.obs_dict["vae_obs"] = self.vae_obs_history.get_all_data()
         if self.cfg.config_summary.env.clip_obs is not None:

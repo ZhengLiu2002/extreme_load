@@ -110,6 +110,7 @@ class ObservationsCfg:
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        joint_torques = ObsTerm(func=mdp.joint_torques, scale=0.05)
         actions = ObsTerm(func=mdp.last_action)
         height_scan = ObsTerm(func=mdp.height_scan_fix, params={"sensor_cfg": SceneEntityCfg("height_scanner")})
         push_vel = ObsTerm(func=mdp.push_vel)
@@ -134,6 +135,7 @@ class ObservationsCfg:
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        joint_torques = ObsTerm(func=mdp.joint_torques, scale=0.05)
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):

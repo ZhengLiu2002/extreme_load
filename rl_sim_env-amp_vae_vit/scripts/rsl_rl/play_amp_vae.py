@@ -147,7 +147,7 @@ def main() -> None:
         min_std=min_std,
         **cfg_policy,
     ).to(agent_cfg.device)
-    vae = VAE(cenet_in_dim, cenet_out_dim).to(agent_cfg.device)
+    vae = VAE(cenet_in_dim, cenet_out_dim, num_actor_obs).to(agent_cfg.device)
 
     # PyTorch >= 2.6 defaults `weights_only=True`, which can fail for our checkpoints because they may
     # contain non-tensor objects (e.g., Normalizer). For local checkpoints you trust, fall back to
@@ -188,13 +188,16 @@ def main() -> None:
                 _code,
                 code_vel,
                 code_mass,
+                code_com,
                 code_latent,
                 *_,
             ) = vae.cenet_forward(vae_obs, deterministic=True)
+            mixed_com = p_boot_mean * code_com + (1.0 - p_boot_mean) * critic_obs[:, -4:-1]
             obs_full = torch.cat(
                 (
                     p_boot_mean * code_vel + (1.0 - p_boot_mean) * critic_obs[:, 0:3],
                     p_boot_mean * code_mass + (1.0 - p_boot_mean) * critic_obs[:, -1:],
+                    mixed_com,
                     code_latent,
                     actor_obs,
                 ),

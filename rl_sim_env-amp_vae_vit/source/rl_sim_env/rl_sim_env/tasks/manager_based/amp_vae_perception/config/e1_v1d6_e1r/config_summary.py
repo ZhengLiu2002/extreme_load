@@ -95,10 +95,10 @@ class ConfigSummary:
         num_terrains_percent = 0.8
         num_plane_stand_percent = 0.1
         num_plane_yaw_percent = 0.1
-        num_actor_obs = 45
+        num_actor_obs = 57
         num_critic_obs = 48 + 193  # base_lin_vel*3 + base_ang_vel*3 +  projected_gravity*3 + commands*3 + dof_pos*12 + dof_vel*12 + actions*12
         num_amp_obs = 39  # joint_pos*12 + foot_pos*12 + base_lin_vel*3 + base_ang_vel*3 + joint_vel*12 + pos_z *1
-        num_vae_obs = 45  # num_actor_obs
+        num_vae_obs = 57  # num_actor_obs
         obs_history_length = 5
         num_vae_out = 19  # code_vel*3 + latent*16
         num_actions = 12

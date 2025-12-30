@@ -48,6 +48,22 @@ python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
 
 ```
 
+## 近期稳定性修复（VAE + CoM）
+**Summary**
+- Actor/VAE 观测加入 `joint_torques` 且统一 `scale=0.05`，避免 `vae_decode_loss` 被扭矩量级拉爆。
+- AMP-VAE 与 AMP-VAE-ViT 中引入 `vae_com_scale=10.0`，并在 `act` 与 `update` 中同步放大 CoM（Teacher Forcing 一致）。
+- VIT/Perception 分支同步更新观测维度（`num_actor_obs`/`num_vae_obs` +12 for v1d6）。
+
+**Rationale**
+- 扭矩未归一化会导致 VAE 解码重建误差占据主导，掩盖 Mass/CoM 梯度。
+- CoM 量级过小会出现梯度消失，放大后能与其它重建项同阶。
+
+**Impact**
+- 新模型与旧 checkpoint 在 VAE 解码维度上不兼容（需用匹配配置加载）。
+
+**Testing**
+- 未运行完整训练，仅做静态一致性修改。
+
 ## 改进方向：
 1. 增加 派生动作奖励，让机器人学会落足点定位在足端半径范围内方差比较小的地方。
 2.  用VAE去尝试学习机器人背上的负载状态。
