@@ -480,7 +480,7 @@ class AMPVAEPPO:
             loss_recon_mass = nn.MSELoss()(vae_code_mass, vae_mass_target)
             loss_recon_com = nn.MSELoss()(vae_code_com, vae_com_target)
             loss_recon_decode = nn.MSELoss()(vae_decoded, vae_decode_target)
-            loss_recon = loss_recon_vel + loss_recon_mass + loss_recon_decode + 2.0 * loss_recon_com
+            loss_recon = loss_recon_vel + loss_recon_mass + loss_recon_decode + 0.1 * loss_recon_com
 
             # if self.is_multi_gpu:
             #     local_recon = torch.tensor(loss_recon_decode.item(), device=self.device)

@@ -44,7 +44,7 @@ conda activate isaaclab
 python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
  --task Rl-Sim-Env-AmpVae-Grq20-V2d3-Play-v0 \
  --num_envs 25 \
---checkpoint logs/rsl_rl/grq20_v1d6_amp_vae/
+--checkpoint logs/rsl_rl/grq20_v2d3_amp_vae/
 
 ```
 

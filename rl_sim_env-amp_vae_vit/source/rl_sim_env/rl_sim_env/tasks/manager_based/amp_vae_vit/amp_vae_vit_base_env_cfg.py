@@ -88,7 +88,7 @@ class ObservationsCfg:
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        joint_torques = ObsTerm(func=mdp.joint_torques, scale=0.05)
+        joint_torques = ObsTerm(func=mdp.joint_torques, scale=0.02)
         actions = ObsTerm(func=mdp.last_action)
         velocity_commands = ObsTerm(
             func=mdp.generated_commands_scale, params={"command_name": "base_velocity", "scale": (2.0, 2.0, 0.25)}
