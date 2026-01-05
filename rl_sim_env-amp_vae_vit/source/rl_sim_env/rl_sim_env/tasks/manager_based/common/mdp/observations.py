@@ -74,6 +74,32 @@ def random_mass(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor
     return mass_obs.to(env.device)
 
 
+def system_com(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg, base_body_name: str) -> torch.Tensor:
+    """System COM (mass-weighted) in the base link frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    base_ids, _ = asset.find_bodies(base_body_name, preserve_order=True)
+    base_id = base_ids[0]
+
+    masses = asset.root_physx_view.get_masses().to(env.device)
+    com_w = asset.data.body_com_pose_w[..., :3]
+    total_mass = masses.sum(dim=1, keepdim=True)
+    system_com_w = (com_w * masses.unsqueeze(-1)).sum(dim=1) / total_mass
+
+    base_pos_w = asset.data.body_link_pos_w[:, base_id]
+    base_quat_w = asset.data.body_link_quat_w[:, base_id]
+    return quat_rotate_inverse(base_quat_w, system_com_w - base_pos_w)
+
+
+def system_mass_delta(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """System total mass delta relative to default masses."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    masses = asset.root_physx_view.get_masses().to(env.device)
+    default_masses = asset.data.default_mass.to(env.device)
+    total_mass = masses.sum(dim=1, keepdim=True)
+    default_total = default_masses.sum(dim=1, keepdim=True)
+    return (total_mass - default_total)
+
+
 def random_material(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     asset: RigidObject = env.scene[asset_cfg.name]
     material_obs = asset.root_physx_view.get_material_properties()[:, asset_cfg.body_ids, :]

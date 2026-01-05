@@ -6,6 +6,7 @@
 from isaaclab.utils import configclass
 import isaaclab.envs.mdp as mdp                       # 导入标准 MDP 库
 from isaaclab.managers import EventTermCfg as EventTerm # 导入事件项配置
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg            # 导入场景实体配置
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from rl_sim_env.tasks.manager_based.amp_vae.amp_vae_base_env_cfg import AmpVaeEnvCfg
@@ -112,6 +113,16 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         self.actions.joint_pos.scale = self.config_summary.action.scale
         self.actions.joint_pos.joint_names = ROBOT_LEG_JOINT_NAMES
 
+        # use system COM / total mass delta for VAE supervision
+        self.observations.critic_obs.random_com = ObsTerm(
+            func=mdp.system_com,
+            params={"asset_cfg": SceneEntityCfg("robot"), "base_body_name": ROBOT_BASE_LINK},
+        )
+        self.observations.critic_obs.random_mass = ObsTerm(
+            func=mdp.system_mass_delta,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+        )
+
         # observations
         # scale
         # critic obs
@@ -180,11 +191,9 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         )
         self.observations.actor_obs.joint_pos.scale = self.config_summary.observation.scale.joint_pos
         self.observations.actor_obs.joint_vel.scale = self.config_summary.observation.scale.joint_vel
-        # Drop auxiliary critic terms (push_vel, random material/mass/com) to match the 250-dim critic_obs used in training
+        # Drop only non-essential aux terms; keep random_com/random_mass for VAE supervision.
         self.observations.critic_obs.push_vel = None
         self.observations.critic_obs.random_material = None
-        self.observations.critic_obs.random_com = None
-        self.observations.critic_obs.random_mass = None
         # Only feed the 12 leg joints into AMP (motion files do not contain arm data)
         leg_joint_cfg = SceneEntityCfg("robot", joint_names=ROBOT_LEG_JOINT_NAMES, preserve_order=True)
         self.observations.amp_obs.joint_pos.params = {"asset_cfg": leg_joint_cfg}
@@ -342,14 +351,14 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
             },
         )
 
-        # 3. 随机负载质量 (4kg 到 7kg)
+        # 3. 随机负载质量 (0kg 到 6kg)
         # 解释：Reset时，改变末端负载的物理属性。
         self.events.randomize_payload_mass = EventTerm(
             func=randomize_payload_mass_once,
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=["arm_load_link"]),
-                "mass_distribution_params": (4.0, 7.0),
+                "mass_distribution_params": (0.0, 6.0),
                 # use "abs" to set absolute mass uniformly in range
                 "operation": "abs",
             },
