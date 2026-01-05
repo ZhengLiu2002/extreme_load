@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import statistics
 import time
@@ -89,6 +90,8 @@ class AMPVAEVITOnPolicyRunner:
             **self.alg_cfg,
             multi_gpu_cfg=self.multi_gpu_cfg,
         )
+        critic_slices = self._build_obs_term_slices("critic_obs")
+        self.alg.set_critic_obs_slices(critic_slices)
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -120,6 +123,19 @@ class AMPVAEVITOnPolicyRunner:
         self.current_learning_iteration = 0
         self.git_status_repos = [__file__]
         _ = self.env.reset()
+
+    def _build_obs_term_slices(self, group_name: str) -> dict[str, slice]:
+        if not hasattr(self.env.unwrapped, "observation_manager"):
+            return {}
+        terms = self.env.unwrapped.observation_manager.active_terms[group_name]
+        dims = self.env.unwrapped.observation_manager.group_obs_term_dim[group_name]
+        idx = 0
+        slices: dict[str, slice] = {}
+        for name, shape in zip(terms, dims):
+            length = math.prod(shape)
+            slices[name] = slice(idx, idx + length)
+            idx += length
+        return slices
 
     def init_logger(self):
         if self.log_dir is not None and self.writer is None and not self.disable_logs:

@@ -10,6 +10,7 @@ does NOT preload AMP motion transitions (which are only needed for training the 
 """
 
 import argparse
+import math
 import os
 import sys
 import time
@@ -112,6 +113,24 @@ def main() -> None:
     # wrap around environment for AMP-VAE runner
     env = AmpVaeVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
+    def _build_obs_term_slices(env_ref, group_name: str) -> dict[str, slice]:
+        if not hasattr(env_ref.unwrapped, "observation_manager"):
+            return {}
+        terms = env_ref.unwrapped.observation_manager.active_terms[group_name]
+        dims = env_ref.unwrapped.observation_manager.group_obs_term_dim[group_name]
+        idx = 0
+        slices: dict[str, slice] = {}
+        for name, shape in zip(terms, dims):
+            length = math.prod(shape)
+            slices[name] = slice(idx, idx + length)
+            idx += length
+        return slices
+
+    critic_slices = _build_obs_term_slices(env, "critic_obs")
+    vel_slice = critic_slices.get("base_lin_vel", slice(0, 3))
+    mass_slice = critic_slices.get("random_mass", slice(-1, None))
+    com_slice = critic_slices.get("random_com", slice(-4, -1))
+
     # ---------------------------------------------------------------------
     # Inference-only model construction (skip AMP motion preload)
     # ---------------------------------------------------------------------
@@ -173,9 +192,12 @@ def main() -> None:
     vae_obs = obs_dict["vae_obs"].to(agent_cfg.device)
 
     timestep = 0
-    # Note: p_boot_mean is a training-time scalar. For inference/visualization, keep it at 0.0 unless you
-    # decide to load a saved value explicitly.
-    p_boot_mean = 0.0
+    # Inference should not rely on privileged critic obs; use pure VAE by default.
+    # Set to 0.0 only when doing upper-bound teacher-forcing comparisons.
+    p_boot_mean = 1.0
+    vae_com_scale = 10.0
+    if p_boot_mean < 1.0 and (not critic_slices or "random_com" not in critic_slices or "random_mass" not in critic_slices):
+        raise ValueError("Teacher forcing requires random_com/random_mass in critic_obs.")
     # AMP reward term expects env.amp_out to exist. For pure visualization we can feed a constant
     # tensor (amp_out==1 -> maximal amp_reward) to avoid needing the discriminator + motion preload.
     dummy_amp_out = torch.ones((env.num_envs, 1), device=agent_cfg.device, dtype=torch.float32)
@@ -192,11 +214,13 @@ def main() -> None:
                 code_latent,
                 *_,
             ) = vae.cenet_forward(vae_obs, deterministic=True)
-            mixed_com = p_boot_mean * code_com + (1.0 - p_boot_mean) * critic_obs[:, -4:-1]
+            mixed_com = p_boot_mean * code_com + (1.0 - p_boot_mean) * (
+                critic_obs[:, com_slice] * vae_com_scale
+            )
             obs_full = torch.cat(
                 (
-                    p_boot_mean * code_vel + (1.0 - p_boot_mean) * critic_obs[:, 0:3],
-                    p_boot_mean * code_mass + (1.0 - p_boot_mean) * critic_obs[:, -1:],
+                    p_boot_mean * code_vel + (1.0 - p_boot_mean) * critic_obs[:, vel_slice],
+                    p_boot_mean * code_mass + (1.0 - p_boot_mean) * critic_obs[:, mass_slice],
                     mixed_com,
                     code_latent,
                     actor_obs,

@@ -18,7 +18,7 @@ import warp as wp
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer, RayCaster
-from isaaclab.utils.math import quat_apply_yaw, quat_rotate_inverse, yaw_quat
+from isaaclab.utils.math import quat_apply_inverse, quat_apply_yaw, yaw_quat
 from rl_sim_env.tasks.manager_based.common.mdp.utils.warp import rasterize_voxels
 
 if TYPE_CHECKING:
@@ -87,7 +87,7 @@ def system_com(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg, base_body_name: 
 
     base_pos_w = asset.data.body_link_pos_w[:, base_id]
     base_quat_w = asset.data.body_link_quat_w[:, base_id]
-    return quat_rotate_inverse(base_quat_w, system_com_w - base_pos_w)
+    return quat_apply_inverse(base_quat_w, system_com_w - base_pos_w)
 
 
 def system_mass_delta(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -201,7 +201,7 @@ def crop_and_collect_points(
     quat_flat = quat.unsqueeze(1).expand(-1, M, -1).reshape(-1, 4)  # (N*M, 4)
     P_rel_flat = P_rel.reshape(-1, 3)  # (N*M, 3)
     #    调用外部已定义的 quat_apply_yaw (假设已 import)，得到 (N*M, 3)
-    P_local_flat = quat_rotate_inverse(yaw_quat(quat_flat), P_rel_flat)  # (N*M, 3)
+    P_local_flat = quat_apply_inverse(yaw_quat(quat_flat), P_rel_flat)  # (N*M, 3)
     #    还原成 (N, M, 3)
     P_local = P_local_flat.view(N, M, 3)  # (N, M, 3)
 

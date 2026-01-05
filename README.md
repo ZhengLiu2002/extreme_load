@@ -48,21 +48,30 @@ python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
 
 ```
 
-## 近期稳定性修复（VAE + CoM）
-**Summary**
-- Actor/VAE 观测加入 `joint_torques` 且统一 `scale=0.05`，避免 `vae_decode_loss` 被扭矩量级拉爆。
-- AMP-VAE 与 AMP-VAE-ViT 中引入 `vae_com_scale=10.0`，并在 `act` 与 `update` 中同步放大 CoM（Teacher Forcing 一致）。
-- VIT/Perception 分支同步更新观测维度（`num_actor_obs`/`num_vae_obs` +12 for v1d6）。
+## 近期改进（AMP‑VAE + System CoM）
+**Change Summary**
+- VAE 输出拆分为 `vel/mass/com/latent`，`code_com` 不再污染 latent；decoder 使用完整拼接向量进行重建。
+- 新增系统辨识：`critic_obs.random_com`/`random_mass` 改为系统级 `system_com` 与 `system_mass_delta`（全机器人+负载、base frame）。
+- Actor/VAE 观测加入 `joint_torques` 并归一化为 `scale=0.02`，抑制 `vae_decode_loss` 的量级爆炸。
+- 引入 `vae_com_scale=10.0` 并在 `act`/`update` 一致使用；`loss_recon_com` 权重下调为 `0.1`。
+- 去除 `critic_obs` 固定索引假设：训练时通过 ObservationManager 动态解析切片，缺失会直接报错。
+- 推理默认使用纯 VAE（`p_boot_mean=1.0`），需要上限对比可改为 `0.0`。
+- 替换 `quat_rotate_inverse` 为 `quat_apply_inverse`，移除 deprecation warning。
 
 **Rationale**
-- 扭矩未归一化会导致 VAE 解码重建误差占据主导，掩盖 Mass/CoM 梯度。
-- CoM 量级过小会出现梯度消失，放大后能与其它重建项同阶。
+- 系统 COM/总质量差异与负载强相关，能让 VAE 学到有效的负载表征。
+- 扭矩/COM 量级需要与其他重建项同阶，避免梯度被压制或放大。
+- 动态切片能避免观测顺序变动导致的“静默错标签”。
 
-**Impact**
-- 新模型与旧 checkpoint 在 VAE 解码维度上不兼容（需用匹配配置加载）。
+**Config Notes**
+- grq20_v2d3：`num_critic_obs=243`，`num_vae_out=23`（vel3 + mass1 + com3 + latent16）。
+- 负载随机化：`arm_load_link` 质量范围改为 `0–6kg`（`operation="abs"`）。
+
+**Compatibility**
+- 旧 checkpoint 与当前 VAE 输出维度/Actor 输入维度不兼容；需使用匹配配置重新训练或加载旧配置。
 
 **Testing**
-- 未运行完整训练，仅做静态一致性修改。
+- 未运行完整训练，仅做静态一致性与运行时警告修复。
 
 ## 改进方向：
 1. 增加 派生动作奖励，让机器人学会落足点定位在足端半径范围内方差比较小的地方。

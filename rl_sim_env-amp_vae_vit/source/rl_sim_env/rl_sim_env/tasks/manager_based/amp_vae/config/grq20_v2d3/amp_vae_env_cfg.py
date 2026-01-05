@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.utils import configclass
-import isaaclab.envs.mdp as mdp                       # 导入标准 MDP 库
+import rl_sim_env.tasks.manager_based.common.mdp as mdp  # 扩展 MDP 库（含 system_com/system_mass_delta）
 from isaaclab.managers import EventTermCfg as EventTerm # 导入事件项配置
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg            # 导入场景实体配置
