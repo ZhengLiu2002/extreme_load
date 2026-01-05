@@ -196,6 +196,12 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         self.observations.critic_obs.random_material = None
         # Only feed the 12 leg joints into AMP (motion files do not contain arm data)
         leg_joint_cfg = SceneEntityCfg("robot", joint_names=ROBOT_LEG_JOINT_NAMES, preserve_order=True)
+        # Exclude arm joints from actor/critic observations and VAE targets.
+        self.observations.actor_obs.joint_pos.params = {"asset_cfg": leg_joint_cfg}
+        self.observations.actor_obs.joint_vel.params = {"asset_cfg": leg_joint_cfg}
+        self.observations.actor_obs.joint_torques.params = {"asset_cfg": leg_joint_cfg}
+        self.observations.critic_obs.joint_pos.params = {"asset_cfg": leg_joint_cfg}
+        self.observations.critic_obs.joint_vel.params = {"asset_cfg": leg_joint_cfg}
         self.observations.amp_obs.joint_pos.params = {"asset_cfg": leg_joint_cfg}
         self.observations.amp_obs.joint_vel.params = {"asset_cfg": leg_joint_cfg}
 

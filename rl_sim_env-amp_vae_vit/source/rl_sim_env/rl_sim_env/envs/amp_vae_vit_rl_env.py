@@ -104,8 +104,15 @@ class AmpVaeVitRLEnv(ManagerBasedEnv, gym.Env):
         )
         self.obs_min_delay = self.cfg.config_summary.observation.delay.min_delay
         self.obs_max_delay = self.cfg.config_summary.observation.delay.max_delay
-        # number of robot joints (includes arm joints for observations)
+        # number of joints used by actor observations (exclude arm joints when configured)
         joint_dim = self.scene["robot"].data.default_joint_pos.shape[1]
+        if hasattr(self, "observation_manager"):
+            terms = self.observation_manager.active_terms["actor_obs"]
+            dims = self.observation_manager.group_obs_term_dim["actor_obs"]
+            for name, shape in zip(terms, dims):
+                if name == "joint_pos":
+                    joint_dim = math.prod(shape)
+                    break
 
         self.obs_actor_base_ang_vel_delay_buffer = DataBuffer(
             self.num_envs, 3, self.obs_max_delay + 1, self.device

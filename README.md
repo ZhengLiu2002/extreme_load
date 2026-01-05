@@ -57,14 +57,18 @@ python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
 - 去除 `critic_obs` 固定索引假设：训练时通过 ObservationManager 动态解析切片，缺失会直接报错。
 - 推理默认使用纯 VAE（`p_boot_mean=1.0`），需要上限对比可改为 `0.0`。
 - 替换 `quat_rotate_inverse` 为 `quat_apply_inverse`，移除 deprecation warning。
+- rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py 路径下 p_boot_mean 为纯 VAE 开关。
+- 观测层面屏蔽机械臂/负载关节：actor/critic/VAE 仅使用腿部关节位置、速度与力矩，避免 arm 扭矩污染 VAE 解码与策略输入。
 
 **Rationale**
 - 系统 COM/总质量差异与负载强相关，能让 VAE 学到有效的负载表征。
 - 扭矩/COM 量级需要与其他重建项同阶，避免梯度被压制或放大。
 - 动态切片能避免观测顺序变动导致的“静默错标签”。
+- 机械臂锁死时仍可能产生大扭矩，若进入 VAE/actor 会破坏解码与 AMP 稳定性。
 
 **Config Notes**
 - grq20_v2d3：`num_critic_obs=243`，`num_vae_out=23`（vel3 + mass1 + com3 + latent16）。
+- grq20_v2d3（锁臂版本）：`num_actor_obs=57`、`num_vae_obs=57`、`num_critic_obs=239`（腿部 12 关节）。
 - 负载随机化：`arm_load_link` 质量范围改为 `0–6kg`（`operation="abs"`）。
 
 **Compatibility**
@@ -72,6 +76,11 @@ python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
 
 **Testing**
 - 未运行完整训练，仅做静态一致性与运行时警告修复。
+
+**Arm/Load 易错点**
+- 机械臂“锁死”只代表动作不控制，但物理引擎仍可能输出很大的关节力矩（高阻尼/重载时更明显）。
+- 若这些扭矩被误加入 `actor_obs` 或 `vae_decode_target`，会造成 `vae_decode_loss` 爆炸、AMP 判别器失效。
+- 新增观测项时务必确认 `asset_cfg` 只覆盖腿部关节，避免 arm/负载扭矩回流到算法输入。
 
 ## 改进方向：
 1. 增加 派生动作奖励，让机器人学会落足点定位在足端半径范围内方差比较小的地方。
