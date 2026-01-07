@@ -6,7 +6,7 @@ CRITIC_HEIGHT_SCANNER_CFG = RayCasterCfg(
     ray_alignment="yaw",
     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
     debug_vis=False,
-    mesh_prim_paths=["/World/ground"],
+    mesh_prim_paths=["/World/ground/terrain"],
 )
 
 VOXEL_SCANNER_CFG = RayCasterCfg(

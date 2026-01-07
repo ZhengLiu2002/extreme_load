@@ -301,6 +301,15 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
         },
     )
+    foothold_flatness = RewTerm(
+        func=mdp.foothold_terrain_flatness,
+        weight=-0.5,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "sample_stride": 2,
+        },
+    )
     # -- optional penalties
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
     # dof_vel_limits = RewTerm(func=mdp.joint_vel_limits, weight=0.0)

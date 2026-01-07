@@ -84,6 +84,136 @@ def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = Scen
     return reward
 
 
+def foothold_terrain_flatness(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("height_scanner"),
+    variance_scale: float | None = None,
+    sample_stride: int = 1,
+) -> torch.Tensor:
+    """Penalize footholds on uneven terrain using local height variance."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    if asset_cfg.body_ids is None or len(asset_cfg.body_ids) == 0:
+        return torch.zeros(env.scene.num_envs, device=env.device)
+
+    foot_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :3]
+
+    sensor = env.scene.sensors.get(sensor_cfg.name, None) if sensor_cfg is not None else None
+    if isinstance(sensor, RayCaster):
+        pattern_cfg = getattr(sensor.cfg, "pattern_cfg", None)
+        resolution = getattr(pattern_cfg, "resolution", None)
+        size = getattr(pattern_cfg, "size", None)
+        if resolution is None or size is None or resolution <= 0:
+            return torch.zeros(env.scene.num_envs, device=env.device)
+
+        size_x = float(size[0])
+        size_y = float(size[1])
+        num_x = int(round(size_x / resolution)) + 1
+        num_y = int(round(size_y / resolution)) + 1
+        stride = max(int(sample_stride), 1)
+
+        ray_z = sensor.data.ray_hits_w[..., 2]
+        ray_z = torch.where(torch.isfinite(ray_z), ray_z, torch.zeros_like(ray_z))
+        if ray_z.shape[1] != num_x * num_y:
+            return torch.zeros(env.scene.num_envs, device=env.device)
+
+        rel = foot_pos_w - sensor.data.pos_w.unsqueeze(1)
+        alignment = getattr(sensor.cfg, "ray_alignment", "yaw")
+        if alignment == "world":
+            rel_local = rel
+        elif alignment == "base":
+            quat = sensor.data.quat_w.unsqueeze(1).repeat(1, rel.shape[1], 1)
+            rel_local = quat_apply_inverse(quat, rel)
+        else:
+            quat = yaw_quat(sensor.data.quat_w).unsqueeze(1).repeat(1, rel.shape[1], 1)
+            rel_local = quat_apply_inverse(quat, rel)
+
+        offset = foot_pos_w.new_tensor(sensor.cfg.offset.pos)
+        rel_local = rel_local - offset
+
+        x_min = -0.5 * size_x
+        y_min = -0.5 * size_y
+        ix = torch.round((rel_local[..., 0] - x_min) / resolution).long()
+        iy = torch.round((rel_local[..., 1] - y_min) / resolution).long()
+        ix = torch.clamp(ix, 0, num_x - 1)
+        iy = torch.clamp(iy, 0, num_y - 1)
+
+        ix_plus = torch.clamp(ix + stride, 0, num_x - 1)
+        ix_minus = torch.clamp(ix - stride, 0, num_x - 1)
+        iy_plus = torch.clamp(iy + stride, 0, num_y - 1)
+        iy_minus = torch.clamp(iy - stride, 0, num_y - 1)
+
+        ordering = getattr(pattern_cfg, "ordering", "xy")
+        if ordering == "yx":
+            idx = ix * num_y + iy
+            idx_xp = ix_plus * num_y + iy
+            idx_xm = ix_minus * num_y + iy
+            idx_yp = ix * num_y + iy_plus
+            idx_ym = ix * num_y + iy_minus
+        else:
+            idx = iy * num_x + ix
+            idx_xp = iy * num_x + ix_plus
+            idx_xm = iy * num_x + ix_minus
+            idx_yp = iy_plus * num_x + ix
+            idx_ym = iy_minus * num_x + ix
+
+        h0 = ray_z.gather(1, idx)
+        hx_plus = ray_z.gather(1, idx_xp)
+        hx_minus = ray_z.gather(1, idx_xm)
+        hy_plus = ray_z.gather(1, idx_yp)
+        hy_minus = ray_z.gather(1, idx_ym)
+        heights = torch.stack((h0, hx_plus, hx_minus, hy_plus, hy_minus), dim=-1)
+        variances = torch.var(heights, dim=-1, unbiased=False)
+        if variance_scale is None:
+            variance_scale = 1.0 / max(float(resolution), 1.0e-6) ** 2
+        variances = variances * float(variance_scale)
+        return torch.sum(variances, dim=1)
+
+    terrain = getattr(env.scene, "terrain", None)
+    height_field = getattr(terrain, "height_field", None) if terrain is not None else None
+    if height_field is None:
+        return torch.zeros(env.scene.num_envs, device=env.device)
+
+    horizontal_scale = getattr(terrain, "horizontal_scale", None)
+    vertical_scale = getattr(terrain, "vertical_scale", None)
+    if horizontal_scale is None or vertical_scale is None:
+        cfg = getattr(terrain, "cfg", None)
+        gen_cfg = getattr(cfg, "terrain_generator", None) if cfg is not None else None
+        horizontal_scale = getattr(gen_cfg, "horizontal_scale", horizontal_scale)
+        vertical_scale = getattr(gen_cfg, "vertical_scale", vertical_scale)
+    if horizontal_scale is None or vertical_scale is None:
+        return torch.zeros(env.scene.num_envs, device=env.device)
+
+    hf = torch.as_tensor(height_field, device=env.device, dtype=torch.float32) * float(vertical_scale)
+    num_rows, num_cols = hf.shape
+    width_m = (num_rows - 1) * horizontal_scale
+    length_m = (num_cols - 1) * horizontal_scale
+
+    foot_pos_xy = foot_pos_w[..., :2]
+
+    r = ((foot_pos_xy[..., 0] + 0.5 * width_m) / horizontal_scale).long()
+    c = ((foot_pos_xy[..., 1] + 0.5 * length_m) / horizontal_scale).long()
+    r = torch.clamp(r, 0, num_rows - 1)
+    c = torch.clamp(c, 0, num_cols - 1)
+
+    r_plus = torch.clamp(r + 1, 0, num_rows - 1)
+    r_minus = torch.clamp(r - 1, 0, num_rows - 1)
+    c_plus = torch.clamp(c + 1, 0, num_cols - 1)
+    c_minus = torch.clamp(c - 1, 0, num_cols - 1)
+
+    h0 = hf[r, c]
+    hx_plus = hf[r_plus, c]
+    hx_minus = hf[r_minus, c]
+    hy_plus = hf[r, c_plus]
+    hy_minus = hf[r, c_minus]
+    heights = torch.stack((h0, hx_plus, hx_minus, hy_plus, hy_minus), dim=-1)
+    variances = torch.var(heights, dim=-1, unbiased=False)
+    if variance_scale is None:
+        variance_scale = 1.0 / max(float(horizontal_scale), 1.0e-6) ** 2
+    variances = variances * float(variance_scale)
+    return torch.sum(variances, dim=1)
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
