@@ -138,7 +138,7 @@ class ConfigSummary:
         lin_x_level: float = 0.0
         max_lin_x_level: float = 5.0
         ang_z_level: float = 0.0
-        max_ang_z_level: float = 5.0
+        max_ang_z_level: float = 3.0 # origin: 5.0
 
         heading_control_stiffness = 0.5
 
@@ -148,21 +148,21 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(-0.5, 0.5),
-                start_curriculum_ang_z=(-0.25, 0.25),
+                start_curriculum_ang_z=(-0.15, 0.15),
                 max_curriculum_lin_x=(-0.8, 0.8),
-                max_curriculum_ang_z=(-1.0, 1.0),
+                max_curriculum_ang_z=(-0.6, 0.6),
             ),
             "pyramid_stairs_inv": UniformVelocityCommandTerrainCfg.Ranges(
                 lin_vel_x=(0.0, 0.5),
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(0.0, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -174,8 +174,8 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(0.0, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -187,8 +187,8 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(-0.5, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -200,8 +200,8 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(-0.5, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -213,8 +213,8 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(-0.5, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -226,8 +226,8 @@ class ConfigSummary:
                 lin_vel_y=(-0.5, 0.5),
                 ang_vel_z=(-0.25, 0.25),
                 heading=(-math.pi / 2, math.pi / 2),
-                heading_command_prob=1.0,
-                yaw_command_prob=0.0,
+                heading_command_prob=0.9,
+                yaw_command_prob=0.1,
                 standing_command_prob=0.0,
                 start_curriculum_lin_x=(-0.5, 0.5),
                 start_curriculum_ang_z=(-0.25, 0.25),
@@ -263,7 +263,7 @@ class ConfigSummary:
         }
 
     class action:
-        scale = 0.25
+        scale = 0.35
 
     class observation:
         class delay:
@@ -274,7 +274,7 @@ class ConfigSummary:
             base_lin_vel = 2.0
             base_ang_vel = 0.25
             projected_gravity = 1.0
-            vel_command = (2.0, 2.0, 0.25)
+            vel_command = (2.0, 2.0, 0.35)
             joint_pos = 1.0
             joint_vel = 0.05
             height_measurements = 5.0
@@ -402,6 +402,8 @@ class AmpVaePPORunnerCfg(AmpVaeOnPolicyRunnerCfg):
         activation="elu",
         # min_normalized_std=[0.01, 0.01, 0.01] * 4,
         min_normalized_std=[0.01] * 14,
+        derived_action_dim=len(ROBOT_FOOT_NAMES) * 3,
+        derived_action_min_std=0.05,
     )
     algorithm = AmpVaePpoAlgorithmCfg(
         value_loss_coef=0.5,
@@ -423,4 +425,5 @@ class AmpVaePPORunnerCfg(AmpVaeOnPolicyRunnerCfg):
         vae_beta_min=1.0e-4,
         vae_beta_max=0.1,
         vae_desired_recon_loss=0.1,
+        derived_action_loss_weight=0.1,
     )

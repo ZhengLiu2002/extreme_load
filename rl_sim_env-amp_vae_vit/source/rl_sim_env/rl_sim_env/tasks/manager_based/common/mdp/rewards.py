@@ -13,11 +13,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import math
 import torch
+import torch.nn.functional as F
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, RayCaster
-from isaaclab.utils.math import quat_apply_inverse, yaw_quat
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -90,8 +92,19 @@ def foothold_terrain_flatness(
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("height_scanner"),
     variance_scale: float | None = None,
     sample_stride: int = 1,
+    variance_kernel_size: int = 3,
+    decay_k: float = 1.0,
+    decay_sigma: float = 1.0,
+    min_sigma: float = 1.0e-3,
+    max_decay_exp: float = 5.0,
+    use_derived_action: bool = True,
 ) -> torch.Tensor:
-    """Penalize footholds on uneven terrain using local height variance."""
+    """Penalize footholds on uneven terrain using local height variance.
+
+    If derived-action output is available (env.derived_action), compute the expected
+    terrain variance under the predicted foothold distribution (Eq. 4 in DAO).
+    Otherwise, fall back to local variance at the actual foot positions.
+    """
     asset: Articulation = env.scene[asset_cfg.name]
     if asset_cfg.body_ids is None or len(asset_cfg.body_ids) == 0:
         return torch.zeros(env.scene.num_envs, device=env.device)
@@ -116,6 +129,87 @@ def foothold_terrain_flatness(
         ray_z = torch.where(torch.isfinite(ray_z), ray_z, torch.zeros_like(ray_z))
         if ray_z.shape[1] != num_x * num_y:
             return torch.zeros(env.scene.num_envs, device=env.device)
+
+        derived_action = getattr(env, "derived_action", None) if use_derived_action else None
+        if derived_action is not None:
+            if derived_action.ndim == 2:
+                if derived_action.shape[1] % 3 != 0:
+                    return torch.zeros(env.scene.num_envs, device=env.device)
+                derived_action = derived_action.view(derived_action.shape[0], -1, 3)
+            if derived_action.ndim != 3 or derived_action.shape[2] < 3:
+                return torch.zeros(env.scene.num_envs, device=env.device)
+            derived_action = derived_action.to(foot_pos_w.device)
+
+            ordering = getattr(pattern_cfg, "ordering", "xy")
+            if ordering == "yx":
+                ray_z_2d = ray_z.view(ray_z.shape[0], num_x, num_y).transpose(1, 2)
+            else:
+                ray_z_2d = ray_z.view(ray_z.shape[0], num_y, num_x)
+
+            k = max(int(variance_kernel_size), 1)
+            if k % 2 == 0:
+                k += 1
+            pad = k // 2
+            kernel = torch.ones((1, 1, k, k), device=ray_z_2d.device, dtype=ray_z_2d.dtype) / float(k * k)
+            ray_z_2d = ray_z_2d.unsqueeze(1)
+            ray_z_pad = F.pad(ray_z_2d, (pad, pad, pad, pad), mode="replicate")
+            mean = F.conv2d(ray_z_pad, kernel)
+            mean_sq = F.conv2d(ray_z_pad.pow(2), kernel)
+            var_map = (mean_sq - mean.pow(2)).squeeze(1)
+
+            if stride > 1:
+                var_map = var_map[:, ::stride, ::stride]
+
+            x_coords = torch.linspace(
+                -0.5 * size_x, 0.5 * size_x, num_x, device=var_map.device, dtype=var_map.dtype
+            )
+            y_coords = torch.linspace(
+                -0.5 * size_y, 0.5 * size_y, num_y, device=var_map.device, dtype=var_map.dtype
+            )
+            if stride > 1:
+                x_coords = x_coords[::stride]
+                y_coords = y_coords[::stride]
+
+            num_x_eff = x_coords.numel()
+            num_y_eff = y_coords.numel()
+            grid_x = x_coords.repeat(num_y_eff)
+            grid_y = y_coords.repeat_interleave(num_x_eff)
+
+            var_flat = var_map.reshape(var_map.shape[0], -1)
+            if variance_scale is None:
+                variance_scale = 1.0 / max(float(resolution), 1.0e-6) ** 2
+            var_flat = var_flat * float(variance_scale)
+
+            mu_b = derived_action[..., :2]
+            sigma = torch.clamp(derived_action[..., 2], min=min_sigma)
+            mu_b3 = torch.cat((mu_b, torch.zeros_like(mu_b[..., :1])), dim=-1)
+            base_quat = sensor.data.quat_w.unsqueeze(1).expand(-1, mu_b3.shape[1], -1)
+            base_pos = sensor.data.pos_w.unsqueeze(1)
+            mu_w = quat_apply(base_quat, mu_b3) + base_pos
+            rel = mu_w - base_pos
+            alignment = getattr(sensor.cfg, "ray_alignment", "yaw")
+            if alignment == "world":
+                rel_local = rel
+            elif alignment == "base":
+                rel_local = quat_apply_inverse(base_quat, rel)
+            else:
+                yaw_q = yaw_quat(sensor.data.quat_w).unsqueeze(1).expand(-1, mu_b3.shape[1], -1)
+                rel_local = quat_apply_inverse(yaw_q, rel)
+            offset = mu_b3.new_tensor(sensor.cfg.offset.pos)
+            rel_local = rel_local - offset
+            mu_local = rel_local[..., :2]
+
+            dx = grid_x[None, None, :] - mu_local[..., 0].unsqueeze(-1)
+            dy = grid_y[None, None, :] - mu_local[..., 1].unsqueeze(-1)
+            dist_sq = dx.pow(2) + dy.pow(2)
+            sigma_sq = torch.clamp(sigma.unsqueeze(-1).pow(2), min=min_sigma**2)
+            norm = 2.0 * math.pi * sigma_sq
+            p = torch.exp(-0.5 * dist_sq / sigma_sq) / norm
+            cell_area = (float(resolution) * stride) ** 2
+            expected = (p * var_flat.unsqueeze(1)).sum(dim=-1) * cell_area
+            decay_denom = torch.clamp(decay_sigma * sigma, min=min_sigma)
+            decay = torch.exp(torch.clamp(decay_k / decay_denom, max=max_decay_exp))
+            return torch.sum(expected * decay, dim=1)
 
         rel = foot_pos_w - sensor.data.pos_w.unsqueeze(1)
         alignment = getattr(sensor.cfg, "ray_alignment", "yaw")

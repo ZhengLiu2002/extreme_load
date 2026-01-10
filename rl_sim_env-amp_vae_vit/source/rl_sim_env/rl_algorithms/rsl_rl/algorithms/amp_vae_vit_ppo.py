@@ -52,6 +52,7 @@ class AMPVAEVITPPO:
         vae_desired_recon_loss=0.1,
         vae_beta_min=1.0e-3,
         vae_beta_max=5.0,
+        derived_action_loss_weight=0.0,
         max_grad_norm=1.0,
         use_clipped_value_loss=True,
         schedule="fixed",
@@ -139,8 +140,12 @@ class AMPVAEVITPPO:
         # VAE parameters
         self.vae_beta = vae_beta
         self.vae_com_scale = 10.0
+        self.derived_action_loss_weight = derived_action_loss_weight
         self._critic_obs_term_slices = None
         self._warned_missing_critic_obs_slices = False
+        self._amp_obs_term_slices = None
+        self._warned_missing_amp_obs_slices = False
+        self.last_derived_action = None
 
         # Adaboot
         self.p_boot = torch.zeros(200, dtype=torch.float32, device=self.device, requires_grad=False)
@@ -149,6 +154,9 @@ class AMPVAEVITPPO:
 
     def set_critic_obs_slices(self, term_slices: dict[str, slice]) -> None:
         self._critic_obs_term_slices = term_slices or {}
+
+    def set_amp_obs_slices(self, term_slices: dict[str, slice]) -> None:
+        self._amp_obs_term_slices = term_slices or {}
 
     def _resolve_critic_obs_slice(self, name: str, fallback: slice) -> slice:
         if self._critic_obs_term_slices is None:
@@ -159,6 +167,16 @@ class AMPVAEVITPPO:
         if name not in self._critic_obs_term_slices:
             raise ValueError(f"Missing critic_obs term '{name}'. Check observation config.")
         return self._critic_obs_term_slices[name]
+
+    def _resolve_amp_obs_slice(self, name: str, fallback: slice) -> slice:
+        if self._amp_obs_term_slices is None:
+            if not self._warned_missing_amp_obs_slices:
+                print("[WARN] amp_obs slices not set; falling back to fixed indices.")
+                self._warned_missing_amp_obs_slices = True
+            return fallback
+        if name not in self._amp_obs_term_slices:
+            raise ValueError(f"Missing amp_obs term '{name}'. Check observation config.")
+        return self._amp_obs_term_slices[name]
 
     def init_storage(
         self,
@@ -219,6 +237,11 @@ class AMPVAEVITPPO:
             ),
             dim=-1,
         ).detach()
+        self.last_derived_action = None
+        derived = self.actor_critic.get_derived_action(obs_full_batch)
+        if derived is not None:
+            mu, sigma, _ = derived
+            self.last_derived_action = torch.cat((mu, sigma.unsqueeze(-1)), dim=-1).detach()
         # compute the actions and values
         self.transition.actions = self.actor_critic.act(obs_full_batch).detach()
         self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
@@ -330,6 +353,7 @@ class AMPVAEVITPPO:
         mean_vae_vel_loss = 0
         mean_vae_mass_loss = 0
         mean_vae_com_loss = 0
+        mean_derived_action_loss = 0
         mean_vae_decode_loss = 0
         mean_vae_kl_loss = 0
         mean_vae_loss = 0
@@ -525,6 +549,19 @@ class AMPVAEVITPPO:
             )
             kl_loss = self.vae_beta * torch.mean(kl_div)
 
+            derived_action_loss = torch.tensor(0.0, device=self.device)
+            if self.derived_action_loss_weight > 0.0:
+                derived = self.actor_critic.get_derived_action(actor_obs_batch)
+                if derived is not None:
+                    mu, sigma, _ = derived
+                    foot_slice = self._resolve_amp_obs_slice("foot_positions", slice(27, 39))
+                    foot_pos = amp_obs_batch[:, foot_slice].view(mu.shape[0], mu.shape[1], 3)
+                    target_xy = foot_pos[..., :2]
+                    sigma = torch.clamp(sigma, min=1.0e-4)
+                    sigma_sq = sigma**2
+                    diff_sq = torch.sum((target_xy - mu).pow(2), dim=-1)
+                    derived_action_loss = (diff_sq / (2.0 * sigma_sq) + torch.log(sigma_sq)).mean()
+
             loss = (
                 surrogate_loss
                 + self.value_loss_coef * value_loss
@@ -533,6 +570,7 @@ class AMPVAEVITPPO:
                 + grad_pen_loss
                 + loss_recon
                 + kl_loss
+                + self.derived_action_loss_weight * derived_action_loss
             )
 
             # Compute the gradients
@@ -573,6 +611,7 @@ class AMPVAEVITPPO:
             mean_vae_kl_loss += kl_loss.item()
             mean_vae_beta += self.vae_beta
             mean_vae_loss += loss_recon.item() + kl_loss.item()
+            mean_derived_action_loss += derived_action_loss.item()
 
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches
@@ -592,6 +631,7 @@ class AMPVAEVITPPO:
         mean_vae_decode_loss /= num_updates
         mean_vae_kl_loss /= num_updates
         mean_vae_beta /= num_updates
+        mean_derived_action_loss /= num_updates
 
         # if self.is_multi_gpu and self.amp_normalizer is not None:
         #     # 调用外面定义的 sync_normalizer 函数
@@ -615,6 +655,7 @@ class AMPVAEVITPPO:
             "vae_decode_loss": mean_vae_decode_loss,
             "vae_kl_loss": mean_vae_kl_loss,
             "vae_beta": mean_vae_beta,
+            "derived_action_loss": mean_derived_action_loss,
         }
 
         return loss_dict

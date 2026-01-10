@@ -142,13 +142,18 @@ class AmpVaeVitVecEnvWrapper(VecEnv):
         return obs_dict
 
     def step(
-        self, actions: torch.Tensor, amp_out: torch.Tensor | None = None
+        self,
+        actions: torch.Tensor,
+        amp_out: torch.Tensor | None = None,
+        derived_action: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         # clip actions
         if self.clip_actions is not None:
             actions = torch.clamp(actions, -self.clip_actions, self.clip_actions)
         # record step information
         self.env.unwrapped.update_amp_out(amp_out)
+        if hasattr(self.env.unwrapped, "update_derived_action"):
+            self.env.unwrapped.update_derived_action(derived_action)
         obs_dict, rew, terminated, truncated, extras, reset_env_ids, terminal_amp_states, episode_reward = (
             self.env.step(actions)
         )

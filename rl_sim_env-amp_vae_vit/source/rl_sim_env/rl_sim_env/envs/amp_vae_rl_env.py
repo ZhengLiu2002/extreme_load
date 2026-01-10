@@ -92,6 +92,7 @@ class AmpVaeRLEnv(ManagerBasedEnv, gym.Env):
         self.obs_dict["amp_obs"] = torch.zeros(self.num_envs, cfg.config_summary.env.num_amp_obs, device=self.device, dtype=torch.float32)
         self.obs_dict["actor_obs"] = torch.zeros(self.num_envs, cfg.config_summary.env.num_actor_obs, device=self.device, dtype=torch.float32)
         self.obs_dict["vae_obs"] = torch.zeros(self.num_envs, cfg.config_summary.env.num_vae_obs * cfg.config_summary.env.obs_history_length, device=self.device, dtype=torch.float32)
+        self.derived_action = None
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.episode_reward_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
         self.episode_reward_term_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
@@ -203,6 +204,10 @@ class AmpVaeRLEnv(ManagerBasedEnv, gym.Env):
         # process amp output
         if amp_out is not None:
             self.amp_out = amp_out
+
+    def update_derived_action(self, derived_action: torch.Tensor | None = None):
+        # store derived-action output for reward computation
+        self.derived_action = derived_action
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         """Execute one time-step of the environment's dynamics and reset terminated environments.

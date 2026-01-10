@@ -9,6 +9,15 @@ CRITIC_HEIGHT_SCANNER_CFG = RayCasterCfg(
     mesh_prim_paths=["/World/ground/terrain"],
 )
 
+FOOTHOLD_HEIGHT_SCANNER_CFG = RayCasterCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/base",
+    offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+    ray_alignment="yaw",
+    pattern_cfg=patterns.GridPatternCfg(resolution=0.2, size=[3.0, 2.0]),
+    debug_vis=False,
+    mesh_prim_paths=["/World/ground/terrain"],
+)
+
 VOXEL_SCANNER_CFG = RayCasterCfg(
     prim_path="{ENV_REGEX_NS}/Robot/base",
     offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),

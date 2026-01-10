@@ -89,3 +89,46 @@ python rl_sim_env-amp_vae_vit/scripts/rsl_rl/play_amp_vae.py \
 
 ## idea
 1. 能不能通过约束让机器人理解约束，最后达到约束几乎不被违反。
+
+
+## W&B Metrics Guide
+
+### Core Training Signals
+- `Train/Mean reward`: Overall return; should trend upward with stable policies.
+- `Train/Mean episode length`: Higher is more stable; dropping often means falls.
+- `Episode_Termination/time_out`: Ratio of episodes that finish normally; higher is better.
+- `Episode_Termination/base_contact`: Body contact terminations; lower is better.
+
+### Tracking Performance
+- `Episode_Reward/track_lin_vel_xy_exp`: Linear velocity tracking reward; higher is better.
+- `Episode_Reward/track_ang_vel_z_exp`: Yaw tracking reward; higher is better.
+- `Metrics/base_velocity/error_vel_xy`: Linear velocity error; lower is better.
+- `Metrics/base_velocity/error_vel_yaw`: Yaw error; lower is better.
+
+### Stability, Smoothness, and Energy
+- `orientation_l0`, `lin_vel_z_l2`, `ang_vel_xy_l2`: Posture/vertical/roll-pitch penalties; closer to 0 is better.
+- `dof_torques_l0`, `dof_vel_l2`, `dof_acc_l2`: Joint effort/velocity/acceleration penalties; closer to 0 is better.
+- `action_rate_l0`, `action_smoothness_l2`: Action smoothness penalties; closer to 0 is better.
+- `joint_power`, `joint_power_distribution`: Energy usage penalties; closer to -2 is better.
+- `feet_slide`, `undesired_contacts`: Sliding/contact penalties; closer to -2 is better.
+
+### AMP / Imitation
+- `amp_reward`: Imitation reward; higher is better.
+- `amp_loss`, `policy_pred`, `expert_pred`: Discriminator stability; should not explode or collapse.
+
+### VAE / Derived Action
+- `vae_vel_loss`, `vae_mass_loss`, `vae_com_loss`, `vae_decode_loss`: Reconstruction losses; stable or decreasing is good.
+- `vae_kl_loss`, `vae_beta`: Regularization; should remain stable (no blow-up).
+- `derived_action_loss`: Probabilistic NLL term; can be negative due to `log(sigma^0)`. Watch for stability and avoid sharp divergence.
+- `foothold_flatness`: Terrain flatness penalty; closer to -2 indicates safer footholds.
+
+### Curriculum
+- `Curriculum/terrain_levels`: Higher and stable means the policy handles harder terrain.
+- `Curriculum/*_command_threshold`: Progression of command difficulty; should ramp and stabilize.
+
+## How to Judge Training Quality
+- Stability: `time_out` up and `base_contact` down, with long episode lengths.
+- Tracking: `track_*` up while `error_vel_*` down.
+- Energy/smoothness: penalties (`dof_*`, `action_*`, `joint_power`) move toward -2 without sacrificing tracking.
+- VAE/Derived: reconstruction losses stabilize; `derived_action_loss` and `foothold_flatness` trend toward stable values (flatness closer to -2).
+- AMP: `amp_reward` increases without `amp_loss` exploding.

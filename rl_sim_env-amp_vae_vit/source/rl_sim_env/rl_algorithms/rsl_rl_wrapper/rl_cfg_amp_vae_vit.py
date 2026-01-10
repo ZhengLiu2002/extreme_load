@@ -34,6 +34,15 @@ class AmpVaeVitPpoActorCriticCfg:
     min_normalized_std: list[float] = MISSING
     """The minimum normalized standard deviation for the policy."""
 
+    derived_action_dim: int = 0
+    """Derived-action output dimension (mu_x, mu_y, sigma per foot)."""
+
+    derived_action_hidden_dims: list[int] | None = None
+    """Hidden dimensions for the derived-action head. Defaults to actor_hidden_dims."""
+
+    derived_action_min_std: float = 0.05
+    """Minimum standard deviation for the derived-action head (meters)."""
+
 
 @configclass
 class AmpVaeVitPpoAlgorithmCfg:
@@ -102,6 +111,9 @@ class AmpVaeVitPpoAlgorithmCfg:
 
     vae_desired_recon_loss: float = MISSING
     """The desired reconstruction loss for the VAE."""
+
+    derived_action_loss_weight: float = 0.0
+    """Weight for the derived-action supervised loss."""
 
 
 @configclass

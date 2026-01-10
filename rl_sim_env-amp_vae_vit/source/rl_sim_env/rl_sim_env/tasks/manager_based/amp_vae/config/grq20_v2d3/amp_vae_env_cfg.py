@@ -26,6 +26,7 @@ from rl_sim_env.tasks.manager_based.common.sensor.frame_transform_config import 
 )
 from rl_sim_env.tasks.manager_based.common.sensor.ray_caster_config import (
     CRITIC_HEIGHT_SCANNER_CFG,
+    FOOTHOLD_HEIGHT_SCANNER_CFG,
 )
 from rl_sim_env.tasks.manager_based.common.terrain.config import AMP_VAE_TERRAIN_CFG
 from typing import Dict, Tuple
@@ -99,6 +100,10 @@ class Grq20V2d3AmpVaeEnvCfg(AmpVaeEnvCfg):
         self.scene.height_scanner = CRITIC_HEIGHT_SCANNER_CFG
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + ROBOT_BASE_LINK
         self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        # foothold scanner settings (reward-only)
+        self.scene.foothold_scanner = FOOTHOLD_HEIGHT_SCANNER_CFG
+        self.scene.foothold_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + ROBOT_BASE_LINK
+        self.scene.foothold_scanner.update_period = self.decimation * self.sim.dt
 
         # contact forces settings
         self.scene.contact_forces.update_period = self.sim.dt
@@ -466,6 +471,7 @@ class Grq20V2d3AmpVaeEnvCfg_REPLAY_AMPDATA(Grq20V2d3AmpVaeEnvCfg_PLAY):
         self.scene.terrain.terrain_generator = None
         self.rewards = None
         self.scene.height_scanner = None
+        self.scene.foothold_scanner = None
         self.observations.critic_obs.height_scan = None
         # no height scan
         # self.scene.height_scanner = None

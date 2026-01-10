@@ -96,6 +96,7 @@ class AmpVaePerceptionRLEnv(ManagerBasedEnv, gym.Env):
         self.actions_history = DataBuffer(
             self.num_envs, cfg.config_summary.env.num_actions, cfg.config_summary.env.action_history_length, self.device
         )
+        self.derived_action = None
         self.obs_min_delay = self.cfg.config_summary.observation.delay.min_delay
         self.obs_max_delay = self.cfg.config_summary.observation.delay.max_delay
         self.obs_critic_delay_buffer = DelayBuffer(self.obs_max_delay, self.num_envs, self.device)
@@ -174,6 +175,10 @@ class AmpVaePerceptionRLEnv(ManagerBasedEnv, gym.Env):
         # process amp output
         if amp_out is not None:
             self.amp_out = amp_out
+
+    def update_derived_action(self, derived_action: torch.Tensor | None = None):
+        # store derived-action output for reward computation
+        self.derived_action = derived_action
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         """Execute one time-step of the environment's dynamics and reset terminated environments.

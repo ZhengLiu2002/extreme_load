@@ -92,6 +92,8 @@ class AMPVAEVITOnPolicyRunner:
         )
         critic_slices = self._build_obs_term_slices("critic_obs")
         self.alg.set_critic_obs_slices(critic_slices)
+        amp_slices = self._build_obs_term_slices("amp_obs")
+        self.alg.set_amp_obs_slices(amp_slices)
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -194,6 +196,7 @@ class AMPVAEVITOnPolicyRunner:
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
                     actions = self.alg.act(actor_obs, critic_obs, amp_obs, vae_obs)
+                    derived_action = self.alg.last_derived_action
                     amp_out = self.alg.amp_discriminator.discriminator_out(
                         amp_obs, next_amp_obs, normalizer=self.alg.amp_normalizer
                     )
@@ -207,7 +210,7 @@ class AMPVAEVITOnPolicyRunner:
                         reset_env_ids,
                         terminal_amp_states,
                         episode_reward,
-                    ) = self.env.step(actions.to(self.device), amp_out.to(self.device))
+                    ) = self.env.step(actions.to(self.device), amp_out.to(self.device), derived_action)
                     actor_obs = obs_buf["actor_obs"]
                     critic_obs = obs_buf["critic_obs"]
                     next_amp_obs = obs_buf["amp_obs"]

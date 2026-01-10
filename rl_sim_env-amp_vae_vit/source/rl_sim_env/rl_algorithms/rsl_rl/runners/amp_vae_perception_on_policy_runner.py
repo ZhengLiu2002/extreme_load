@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import statistics
 import time
@@ -88,6 +89,8 @@ class AMPVAEPerceptionOnPolicyRunner:
             **self.alg_cfg,
             multi_gpu_cfg=self.multi_gpu_cfg,
         )
+        amp_slices = self._build_obs_term_slices("amp_obs")
+        self.alg.set_amp_obs_slices(amp_slices)
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -118,6 +121,19 @@ class AMPVAEPerceptionOnPolicyRunner:
         self.current_learning_iteration = 0
         self.git_status_repos = [__file__]
         _ = self.env.reset()
+
+    def _build_obs_term_slices(self, group_name: str) -> dict[str, slice]:
+        if not hasattr(self.env.unwrapped, "observation_manager"):
+            return {}
+        terms = self.env.unwrapped.observation_manager.active_terms[group_name]
+        dims = self.env.unwrapped.observation_manager.group_obs_term_dim[group_name]
+        idx = 0
+        slices: dict[str, slice] = {}
+        for name, shape in zip(terms, dims):
+            length = math.prod(shape)
+            slices[name] = slice(idx, idx + length)
+            idx += length
+        return slices
 
     def init_logger(self):
         if self.log_dir is not None and self.writer is None and not self.disable_logs:
@@ -176,6 +192,7 @@ class AMPVAEPerceptionOnPolicyRunner:
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
                     actions = self.alg.act(actor_obs, critic_obs, amp_obs, vae_obs)
+                    derived_action = self.alg.last_derived_action
                     amp_out = self.alg.amp_discriminator.discriminator_out(
                         amp_obs, next_amp_obs, normalizer=self.alg.amp_normalizer
                     )
@@ -189,7 +206,7 @@ class AMPVAEPerceptionOnPolicyRunner:
                         reset_env_ids,
                         terminal_amp_states,
                         episode_reward,
-                    ) = self.env.step(actions.to(self.device), amp_out.to(self.device))
+                    ) = self.env.step(actions.to(self.device), amp_out.to(self.device), derived_action)
                     actor_obs = obs_buf["actor_obs"]
                     critic_obs = obs_buf["critic_obs"]
                     next_amp_obs = obs_buf["amp_obs"]

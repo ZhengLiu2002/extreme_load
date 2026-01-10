@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from rsl_rl.utils import resolve_nn_activation
 from torch.distributions import Normal
 
@@ -25,6 +26,9 @@ class ActorCritic(nn.Module):
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
+        derived_action_dim: int = 0,
+        derived_action_hidden_dims: list[int] | None = None,
+        derived_action_min_std: float = 0.05,
         **kwargs,
     ):
         if kwargs:
@@ -80,6 +84,29 @@ class ActorCritic(nn.Module):
 
         self.min_std = min_std
 
+        # Derived-action head (optional)
+        self.derived_action_dim = int(derived_action_dim) if derived_action_dim is not None else 0
+        self.derived_action_min_std = float(derived_action_min_std)
+        self.num_derived_feet = 0
+        if self.derived_action_dim > 0:
+            if self.derived_action_dim % 3 != 0:
+                raise ValueError("derived_action_dim must be divisible by 3 (mu_x, mu_y, sigma per foot).")
+            self.num_derived_feet = self.derived_action_dim // 3
+            derived_hidden_dims = derived_action_hidden_dims or actor_hidden_dims
+            derived_layers = []
+            derived_layers.append(nn.Linear(mlp_input_dim_a, derived_hidden_dims[0]))
+            derived_layers.append(activation)
+            for layer_index in range(len(derived_hidden_dims)):
+                if layer_index == len(derived_hidden_dims) - 1:
+                    derived_layers.append(nn.Linear(derived_hidden_dims[layer_index], self.derived_action_dim))
+                else:
+                    derived_layers.append(nn.Linear(derived_hidden_dims[layer_index], derived_hidden_dims[layer_index + 1]))
+                    derived_layers.append(activation)
+            self.derived_action = nn.Sequential(*derived_layers)
+            print(f"Derived-Action MLP: {self.derived_action}")
+        else:
+            self.derived_action = None
+
     @staticmethod
     # not used at the moment
     def init_weights(sequential, scales):
@@ -130,6 +157,16 @@ class ActorCritic(nn.Module):
     def act_inference(self, observations):
         actions_mean = self.actor(observations)
         return actions_mean
+
+    def get_derived_action(self, observations):
+        if self.derived_action is None:
+            return None
+        out = self.derived_action(observations)
+        out = out.view(observations.shape[0], self.num_derived_feet, 3)
+        mu = out[..., :2]
+        log_sigma = out[..., 2]
+        sigma = F.softplus(log_sigma) + self.derived_action_min_std
+        return mu, sigma, log_sigma
 
     def evaluate(self, critic_observations, **kwargs):
         value = self.critic(critic_observations)

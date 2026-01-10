@@ -217,6 +217,7 @@ def main() -> None:
             mixed_com = p_boot_mean * code_com + (1.0 - p_boot_mean) * (
                 critic_obs[:, com_slice] * vae_com_scale
             )
+            # mixed_com = torch.zeros_like(code_com)
             obs_full = torch.cat(
                 (
                     p_boot_mean * code_vel + (1.0 - p_boot_mean) * critic_obs[:, vel_slice],
